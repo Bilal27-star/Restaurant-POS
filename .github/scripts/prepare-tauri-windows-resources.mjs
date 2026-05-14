@@ -25,7 +25,10 @@ function fileDep(absTarget) {
 }
 
 function ensureApiBuilt() {
-  execFileSync("pnpm", ["--filter", "@pos/api", "run", "build"], { cwd: root, stdio: "inherit" });
+  execFileSync("pnpm.cmd", ["--filter", "@pos/api", "run", "build"], {
+    cwd: root,
+    stdio: "inherit",
+  });
 }
 
 function writeBundledApi() {
@@ -38,32 +41,47 @@ function writeBundledApi() {
   pkg.dependencies = pkg.dependencies ?? {};
   pkg.dependencies["@pos/database"] = fileDep(path.join(root, "packages/database"));
   pkg.dependencies["@pos/contracts"] = fileDep(path.join(root, "packages/contracts"));
+
   if (!pkg.dependencies["embedded-postgres"]) {
     pkg.dependencies["embedded-postgres"] = "18.3.0-beta.17";
   }
+
   delete pkg.devDependencies;
 
-  fs.writeFileSync(path.join(bundledApi, "package.json"), `${JSON.stringify(pkg, null, 2)}\n`);
+  fs.writeFileSync(
+    path.join(bundledApi, "package.json"),
+    `${JSON.stringify(pkg, null, 2)}\n`,
+  );
 
   const distSrc = path.join(apiRoot, "dist");
+
   if (!fs.existsSync(path.join(distSrc, "desktop-runtime.js"))) {
     console.error(
       "prepare-tauri-windows-resources: apps/api/dist/desktop-runtime.js missing — run `pnpm --filter @pos/api run build` locally and ensure desktop-runtime is included in the API build.",
     );
     process.exit(1);
   }
+
   fs.cpSync(distSrc, path.join(bundledApi, "dist"), { recursive: true });
 
   const envExample = path.join(apiRoot, ".env.example");
+
   if (fs.existsSync(envExample)) {
     fs.copyFileSync(envExample, path.join(bundledApi, ".env"));
   }
 
-  execFileSync("npm", ["install", "--omit=dev", "--no-audit", "--no-fund", "--loglevel=error"], {
-    cwd: bundledApi,
-    stdio: "inherit",
-    env: { ...process.env, npm_config_engine_strict: "false" },
-  });
+  execFileSync(
+    "npm",
+    ["install", "--omit=dev", "--no-audit", "--no-fund", "--loglevel=error"],
+    {
+      cwd: bundledApi,
+      stdio: "inherit",
+      env: {
+        ...process.env,
+        npm_config_engine_strict: "false",
+      },
+    },
+  );
 }
 
 async function downloadWindowsEmbeddedNode() {
@@ -74,33 +92,47 @@ async function downloadWindowsEmbeddedNode() {
 
   const zipName = `node-v${NODE_WIN_VER}-win-x64.zip`;
   const url = `https://nodejs.org/dist/v${NODE_WIN_VER}/${zipName}`;
+
   const tmp = path.join(resources, ".ci-node-dl");
+
   fs.rmSync(tmp, { recursive: true, force: true });
   fs.mkdirSync(tmp, { recursive: true });
+
   const zipPath = path.join(tmp, zipName);
 
   const res = await fetch(url);
+
   if (!res.ok) {
     throw new Error(`Failed to download Node: ${url} (${res.status})`);
   }
+
   const buf = Buffer.from(await res.arrayBuffer());
+
   fs.writeFileSync(zipPath, buf);
 
-  execFileSync("tar", ["-xf", zipPath, "-C", tmp], { stdio: "inherit" });
+  execFileSync("tar", ["-xf", zipPath, "-C", tmp], {
+    stdio: "inherit",
+  });
 
   const extracted = path.join(tmp, `node-v${NODE_WIN_VER}-win-x64`);
   const nodeExe = path.join(extracted, "node.exe");
+
   if (!fs.existsSync(nodeExe)) {
     throw new Error(`Expected ${nodeExe} after extracting ${zipName}`);
   }
+
   fs.copyFileSync(nodeExe, path.join(nodeBinDir, "node.exe"));
   fs.copyFileSync(nodeExe, path.join(nodeBinDir, "node"));
 
   fs.rmSync(tmp, { recursive: true, force: true });
-  console.log(`prepare-tauri-windows-resources: embedded Node ${NODE_WIN_VER} -> ${nodeBinDir}`);
+
+  console.log(
+    `prepare-tauri-windows-resources: embedded Node ${NODE_WIN_VER} -> ${nodeBinDir}`,
+  );
 }
 
 ensureApiBuilt();
 writeBundledApi();
 await downloadWindowsEmbeddedNode();
+
 console.log("prepare-tauri-windows-resources: done");
