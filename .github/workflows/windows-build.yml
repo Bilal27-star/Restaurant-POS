@@ -22,6 +22,7 @@ jobs:
     name: Windows installers (NSIS + MSI)
     runs-on: windows-latest
     timeout-minutes: 90
+
     defaults:
       run:
         shell: pwsh
@@ -32,6 +33,9 @@ jobs:
 
       - name: Enable Git long paths (Windows)
         run: git config --global core.longpaths true
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
 
       - name: Install Node.js
         uses: actions/setup-node@v4
