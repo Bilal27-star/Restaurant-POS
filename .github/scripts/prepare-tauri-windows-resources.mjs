@@ -25,10 +25,14 @@ function fileDep(absTarget) {
 }
 
 function ensureApiBuilt() {
-  execFileSync("pnpm.cmd", ["--filter", "@pos/api", "run", "build"], {
-    cwd: root,
-    stdio: "inherit",
-  });
+  execFileSync(
+    "cmd",
+    ["/c", "pnpm --filter @pos/api run build"],
+    {
+      cwd: root,
+      stdio: "inherit",
+    }
+  );
 }
 
 function writeBundledApi() {
@@ -50,19 +54,21 @@ function writeBundledApi() {
 
   fs.writeFileSync(
     path.join(bundledApi, "package.json"),
-    `${JSON.stringify(pkg, null, 2)}\n`,
+    `${JSON.stringify(pkg, null, 2)}\n`
   );
 
   const distSrc = path.join(apiRoot, "dist");
 
   if (!fs.existsSync(path.join(distSrc, "desktop-runtime.js"))) {
     console.error(
-      "prepare-tauri-windows-resources: apps/api/dist/desktop-runtime.js missing — run `pnpm --filter @pos/api run build` locally and ensure desktop-runtime is included in the API build.",
+      "prepare-tauri-windows-resources: apps/api/dist/desktop-runtime.js missing — run `pnpm --filter @pos/api run build` locally and ensure desktop-runtime is included in the API build."
     );
     process.exit(1);
   }
 
-  fs.cpSync(distSrc, path.join(bundledApi, "dist"), { recursive: true });
+  fs.cpSync(distSrc, path.join(bundledApi, "dist"), {
+    recursive: true,
+  });
 
   const envExample = path.join(apiRoot, ".env.example");
 
@@ -72,7 +78,13 @@ function writeBundledApi() {
 
   execFileSync(
     "npm",
-    ["install", "--omit=dev", "--no-audit", "--no-fund", "--loglevel=error"],
+    [
+      "install",
+      "--omit=dev",
+      "--no-audit",
+      "--no-fund",
+      "--loglevel=error",
+    ],
     {
       cwd: bundledApi,
       stdio: "inherit",
@@ -80,7 +92,7 @@ function writeBundledApi() {
         ...process.env,
         npm_config_engine_strict: "false",
       },
-    },
+    }
   );
 }
 
@@ -127,7 +139,7 @@ async function downloadWindowsEmbeddedNode() {
   fs.rmSync(tmp, { recursive: true, force: true });
 
   console.log(
-    `prepare-tauri-windows-resources: embedded Node ${NODE_WIN_VER} -> ${nodeBinDir}`,
+    `prepare-tauri-windows-resources: embedded Node ${NODE_WIN_VER} -> ${nodeBinDir}`
   );
 }
 
