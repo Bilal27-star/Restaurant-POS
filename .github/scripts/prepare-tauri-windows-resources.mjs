@@ -105,27 +105,14 @@ function writeBundledApi() {
   }
 
   console.log(
-    "Installing production dependencies..."
+    "Copying root node_modules..."
   );
 
-  execFileSync(
-    process.platform === "win32"
-      ? "npm.cmd"
-      : "npm",
-    [
-      "install",
-      "--omit=dev",
-      "--no-audit",
-      "--no-fund",
-      "--loglevel=error",
-    ],
+  fs.cpSync(
+    path.join(root, "node_modules"),
+    path.join(bundledApi, "node_modules"),
     {
-      cwd: bundledApi,
-      stdio: "inherit",
-      env: {
-        ...process.env,
-        npm_config_engine_strict: "false",
-      },
+      recursive: true,
     }
   );
 
@@ -133,13 +120,9 @@ function writeBundledApi() {
     "Copying workspace packages..."
   );
 
-  const nodeModules = path.join(
-    bundledApi,
-    "node_modules"
-  );
-
   const posScope = path.join(
-    nodeModules,
+    bundledApi,
+    "node_modules",
     "@pos"
   );
 
