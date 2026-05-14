@@ -11,7 +11,7 @@ on:
     branches: [main]
 
 concurrency:
-  group: windows-tauri-${{ github.workflow }}-${{ github.ref }}
+  group: windows-build
   cancel-in-progress: true
 
 env:
