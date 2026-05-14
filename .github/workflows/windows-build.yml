@@ -36,6 +36,8 @@ jobs:
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
+        with:
+          run_install: false
 
       - name: Install Node.js
         uses: actions/setup-node@v4
@@ -43,6 +45,9 @@ jobs:
           node-version: "20"
           cache: pnpm
           cache-dependency-path: pnpm-lock.yaml
+
+      - name: Verify pnpm
+        run: pnpm --version
 
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
