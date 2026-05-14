@@ -1,0 +1,336 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+@import "@fontsource-variable/geist";
+
+/* Class-driven dark mode (enterprise POS: ship dark-first, toggle later via `html.dark`). */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* POS / dashboard structural colors — semantic text/surfaces live in :root */
+@theme {
+  --font-sans: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, "Noto Sans", sans-serif;
+
+  --radius-lg: 0.75rem;
+  --radius-md: calc(0.75rem - 2px);
+  --radius-sm: calc(0.75rem - 4px);
+
+  --color-pos-bg: var(--pos-bg);
+  --color-pos-surface: var(--pos-surface);
+  --color-pos-border: var(--pos-border);
+  --color-pos-accent: #6366f1;
+  --color-pos-accent-warm: #f97316;
+  --color-pos-depth: var(--pos-depth);
+  --color-pos-elevated: var(--pos-elevated);
+  --color-pos-glass: var(--pos-glass);
+  --color-pos-neon-magenta: #a78bfa;
+  --color-pos-neon-amber: #fbbf24;
+  --color-pos-neon-orange: #fb923c;
+  --color-pos-violet-glow: var(--pos-violet-glow);
+  --color-pos-border-subtle: var(--pos-border-subtle);
+  --color-pos-dash-void: var(--pos-dash-void);
+  --color-pos-dash-deep: var(--pos-dash-deep);
+  --color-pos-dash-mid: var(--pos-dash-mid);
+  --color-pos-dash-veil: var(--pos-dash-veil);
+  --color-pos-dash-shine: var(--pos-dash-shine);
+  --color-pos-dash-edge: var(--pos-dash-edge);
+  --color-pos-dash-glow: var(--pos-dash-glow);
+
+  /* Elevation — values bound in :root / .dark via --elev-* */
+  --shadow-app-soft: var(--elev-app-soft);
+  --shadow-surface-xs: var(--elev-xs);
+  --shadow-surface-sm: var(--elev-sm);
+  --shadow-surface-md: var(--elev-md);
+  --shadow-surface-lg: var(--elev-lg);
+  --shadow-surface-hover: var(--elev-hover);
+  --shadow-surface-sink: var(--elev-sink);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+
+  html {
+    @apply h-full scroll-smooth antialiased font-sans;
+    color-scheme: dark light;
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  html.dark {
+    color-scheme: dark;
+  }
+
+  body {
+    @apply m-0 min-h-dvh bg-background text-foreground antialiased;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4 {
+    @apply text-foreground;
+  }
+
+  #root {
+    @apply min-h-dvh;
+  }
+}
+
+@layer components {
+  /** Inset layer — table headers, wells, nested metrics */
+  .surface-sunken {
+    @apply rounded-xl border border-border bg-muted;
+    box-shadow: var(--shadow-surface-sink);
+  }
+
+  /**
+   * Remaps semantic text tokens for dark / tinted glass surfaces only.
+   * Use on subtrees (never wrap light `bg-card` content).
+   */
+  .surface-dark-ink {
+    --foreground: var(--on-dark-title);
+    --card-foreground: var(--on-dark-title);
+    --popover-foreground: var(--on-dark-title);
+    --muted-foreground: var(--on-dark-secondary);
+    --caption-foreground: var(--on-dark-label);
+    --secondary-foreground: var(--on-dark-table);
+    --accent-foreground: var(--on-dark-title);
+    --placeholder-foreground: var(--on-dark-placeholder);
+    --muted: rgb(148 163 184 / 0.12);
+    --accent: rgb(148 163 184 / 0.14);
+    color: var(--on-dark-secondary);
+  }
+
+  .surface-dark-ink :where(input, textarea)::placeholder {
+    color: var(--on-dark-placeholder);
+  }
+
+  .surface-dark-ink :where(input, textarea):disabled {
+    color: var(--on-dark-disabled);
+  }
+}
+
+@theme inline {
+  --font-heading: var(--font-sans);
+  --font-sans: 'Geist Variable', sans-serif;
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --color-foreground: var(--foreground);
+  --color-background: var(--background);
+  --color-caption-foreground: var(--caption-foreground);
+  /* Light-on-dark type ramp — utilities `text-on-dark-*` (see :root --on-dark-*) */
+  --color-on-dark-title: var(--on-dark-title);
+  --color-on-dark-secondary: var(--on-dark-secondary);
+  --color-on-dark-label: var(--on-dark-label);
+  --color-on-dark-placeholder: var(--on-dark-placeholder);
+  --color-on-dark-table: var(--on-dark-table);
+  --color-on-dark-disabled: var(--on-dark-disabled);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
+}
+
+:root {
+  /*
+   * Design system — light canvas + readable type (titles / secondary / labels).
+   * Chrome (header + sidebar) use explicit dark hex in layout components.
+   */
+  --on-dark-title: #f9fafb;
+  --on-dark-secondary: #cbd5e1;
+  --on-dark-label: #94a3b8;
+  --on-dark-placeholder: #64748b;
+  --on-dark-table: #e5e7eb;
+  --on-dark-disabled: #6b7280;
+  --placeholder-foreground: #64748b;
+
+  /* POS rails / glass — light fallback (app ships `html.dark`) */
+  --pos-bg: #f5f7fb;
+  --pos-surface: #ffffff;
+  --pos-border: #e5e7eb;
+  --pos-border-subtle: #e5e7eb;
+  --pos-depth: #eef1f6;
+  --pos-elevated: #ffffff;
+  --pos-glass: rgb(255 255 255 / 0.88);
+  --pos-dash-void: #f5f7fb;
+  --pos-dash-deep: #f1f5f9;
+  --pos-dash-mid: rgb(241 245 249 / 0.92);
+  --pos-dash-veil: rgb(255 255 255 / 0.82);
+  --pos-dash-edge: #e2e8f0;
+  --pos-dash-shine: rgb(79 70 229 / 0.06);
+  --pos-dash-glow: rgb(79 70 229 / 0.05);
+  --pos-violet-glow: rgb(79 70 229 / 0.12);
+
+  /* Elevation — light */
+  --elev-app-soft: 0 4px 12px rgba(0, 0, 0, 0.06);
+  --elev-xs: 0 1px 2px rgba(0, 0, 0, 0.05), 0 0 0 1px rgba(15, 23, 42, 0.04);
+  --elev-sm: 0 2px 8px rgba(0, 0, 0, 0.06), var(--elev-app-soft);
+  --elev-md: 0 1px 0 rgb(255 255 255 / 0.8) inset, 0 1px 2px rgba(0, 0, 0, 0.04), var(--elev-app-soft),
+    0 0 0 1px rgba(15, 23, 42, 0.06);
+  --elev-lg: 0 1px 0 rgb(255 255 255 / 0.85) inset, 0 4px 12px rgba(0, 0, 0, 0.08), 0 12px 32px rgba(0, 0, 0, 0.08),
+    0 0 0 1px rgba(15, 23, 42, 0.06);
+  --elev-hover: 0 1px 0 rgb(255 255 255 / 0.9) inset, 0 4px 12px rgba(0, 0, 0, 0.07), 0 8px 24px rgba(0, 0, 0, 0.08),
+    0 0 0 1px rgba(15, 23, 42, 0.08);
+  --elev-sink: inset 0 1px 2px rgba(15, 23, 42, 0.06);
+
+  --background: #f5f7fb;
+  --foreground: #111827;
+  --card: #ffffff;
+  --card-foreground: #111827;
+  --popover: #ffffff;
+  --popover-foreground: #111827;
+  --primary: #4f46e5;
+  --primary-foreground: #ffffff;
+  --secondary: #f3f4f6;
+  --secondary-foreground: #111827;
+  --muted: #eef1f6;
+  --muted-foreground: #4b5563;
+  --caption-foreground: #6b7280;
+  --accent: #f3f4f6;
+  --accent-foreground: #111827;
+  --destructive: #dc2626;
+  --destructive-foreground: #ffffff;
+  --border: #e5e7eb;
+  --input: #d1d5db;
+  --ring: #4f46e5;
+  --chart-1: #4f46e5;
+  --chart-2: #6b7280;
+  --chart-3: #111827;
+  --chart-4: #6b7280;
+  --chart-5: #e5e7eb;
+  --radius: 0.625rem;
+  /* Sidebar token (nav uses explicit classes; kept for shadcn sidebar-* if used) */
+  --sidebar: #0b1220;
+  --sidebar-foreground: #e5e7eb;
+  --sidebar-primary: #a855f7;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: rgb(255 255 255 / 0.06);
+  --sidebar-accent-foreground: #f9fafb;
+  --sidebar-border: #1e293b;
+  --sidebar-ring: #c026d3;
+}
+
+.dark {
+  color-scheme: dark;
+  /* Zinc void — readable low-light (Linear / Vercel / GitHub dark adjacent) */
+  --background: #09090b;
+  --foreground: #fafafa;
+  --card: #121214;
+  --card-foreground: #fafafa;
+  --popover: #18181b;
+  --popover-foreground: #fafafa;
+  --primary: #818cf8;
+  --primary-foreground: #09090b;
+  --secondary: #27272a;
+  --secondary-foreground: #fafafa;
+  --muted: #27272a;
+  --muted-foreground: #a1a1aa;
+  --caption-foreground: #71717a;
+  --accent: #27272a;
+  --accent-foreground: #fafafa;
+  --destructive: #f87171;
+  --destructive-foreground: #fafafa;
+  --border: rgb(39 39 42 / 0.95);
+  --input: #3f3f46;
+  --ring: #a5b4fc;
+  --placeholder-foreground: #71717a;
+  --chart-1: #818cf8;
+  --chart-2: #a1a1aa;
+  --chart-3: #fafafa;
+  --chart-4: #71717a;
+  --chart-5: #3f3f46;
+  --sidebar: #050506;
+  --sidebar-foreground: #e4e4e7;
+  --sidebar-primary: #a5b4fc;
+  --sidebar-primary-foreground: #09090b;
+  --sidebar-accent: rgb(255 255 255 / 0.06);
+  --sidebar-accent-foreground: #fafafa;
+  --sidebar-border: #27272a;
+  --sidebar-ring: #818cf8;
+
+  /* POS — same semantics, dark surfaces */
+  --pos-bg: #09090b;
+  --pos-surface: #18181b;
+  --pos-border: #27272a;
+  --pos-border-subtle: #27272a;
+  --pos-depth: #0c0c0e;
+  --pos-elevated: #1f1f23;
+  --pos-glass: rgb(24 24 27 / 0.72);
+  --pos-dash-void: #09090b;
+  --pos-dash-deep: #0f0f12;
+  --pos-dash-mid: rgb(24 24 27 / 0.88);
+  --pos-dash-veil: rgb(24 24 27 / 0.55);
+  --pos-dash-edge: #3f3f46;
+  --pos-dash-shine: rgb(129 140 248 / 0.1);
+  --pos-dash-glow: rgb(129 140 248 / 0.08);
+  --pos-violet-glow: rgb(129 140 248 / 0.22);
+
+  /* Elevation — dark (no light top inset) */
+  --elev-app-soft: 0 4px 14px rgba(0, 0, 0, 0.55);
+  --elev-xs: 0 1px 2px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(255, 255, 255, 0.06);
+  --elev-sm: 0 2px 10px rgba(0, 0, 0, 0.5), var(--elev-app-soft);
+  --elev-md: 0 0 0 1px rgba(255, 255, 255, 0.07), 0 4px 16px rgba(0, 0, 0, 0.5);
+  --elev-lg: 0 0 0 1px rgba(255, 255, 255, 0.08), 0 8px 28px rgba(0, 0, 0, 0.55), 0 20px 50px rgba(0, 0, 0, 0.55);
+  --elev-hover: 0 0 0 1px rgba(255, 255, 255, 0.1), 0 8px 28px rgba(0, 0, 0, 0.6);
+  --elev-sink: inset 0 1px 2px rgba(0, 0, 0, 0.55);
+}
+
+@layer utilities {
+  /** Thin styled scrollbar for POS modals (WebKit + Firefox). */
+  .scrollbar-pos-modal {
+    scrollbar-width: thin;
+    scrollbar-color: rgb(148 163 184 / 0.28) transparent;
+  }
+
+  .scrollbar-pos-modal::-webkit-scrollbar {
+    width: 5px;
+  }
+
+  .scrollbar-pos-modal::-webkit-scrollbar-track {
+    margin-block: 4px;
+    background: transparent;
+  }
+
+  .scrollbar-pos-modal::-webkit-scrollbar-thumb {
+    border-radius: 9999px;
+    background: rgb(148 163 184 / 0.22);
+    box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.06);
+  }
+
+  .scrollbar-pos-modal::-webkit-scrollbar-thumb:hover {
+    background: rgb(186 198 216 / 0.35);
+  }
+}

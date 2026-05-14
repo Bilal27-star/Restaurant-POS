@@ -1,0 +1,12 @@
+{
+  "extends": "@pos/tsconfig/tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "baseUrl": "src",
+    "paths": {
+      "@/*": ["./*"]
+    }
+  },
+  "include": ["src/**/*.ts", "src/**/*.tsx", "src/**/*.d.ts", "vite.config.ts"],
+  "exclude": ["dist", "node_modules"]
+}

@@ -1,0 +1,1 @@
+{"default":{"identifier":"default","description":"Production POS: core UI, desktop IPC bridge, logs, shell open, dialogs, autostart.","local":true,"windows":["main"],"permissions":["core:default","allow-pos-desktop","log:default","shell:default","dialog:default","autostart:default"]}}

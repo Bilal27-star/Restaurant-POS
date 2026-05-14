@@ -1,0 +1,33 @@
+{
+  "name": "@pos/root",
+  "private": true,
+  "packageManager": "pnpm@9.15.0",
+  "engines": {
+    "node": ">=20.10.0"
+  },
+  "scripts": {
+    "db:up": "bash scripts/db-up.sh",
+    "db:down": "bash scripts/db-down.sh",
+    "db:wait": "bash scripts/wait-for-postgres.sh",
+    "db:migrate": "pnpm --filter @pos/database run migrate:deploy",
+    "db:reset": "bash scripts/db-reset.sh && pnpm run db:wait && pnpm run db:migrate",
+    "dev:api:stack": "pnpm run db:up && pnpm run db:wait && pnpm run db:migrate && pnpm run dev:api",
+    "dev:web": "pnpm --filter @pos/web dev",
+    "dev:api": "pnpm --filter @pos/api dev",
+    "dev:desktop": "pnpm --filter @pos/tauri-pos dev",
+    "build:desktop": "pnpm --filter @pos/tauri-pos build",
+    "build:desktop:mac": "pnpm --filter @pos/tauri-pos run build:mac",
+    "build:desktop:windows": "pnpm --filter @pos/tauri-pos run build:windows",
+    "build": "pnpm -r run build",
+    "typecheck": "pnpm -r run typecheck",
+    "lint": "pnpm -r run lint"
+  },
+  "devDependencies": {
+    "autoprefixer": "^10.5.0",
+    "postcss": "^8.5.14",
+    "tailwindcss": "^4.3.0"
+  },
+  "dependencies": {
+    "@tailwindcss/vite": "^4.3.0"
+  }
+}

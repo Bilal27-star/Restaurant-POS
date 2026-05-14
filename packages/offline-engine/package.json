@@ -1,0 +1,21 @@
+{
+  "name": "@pos/offline-engine",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    }
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "@pos/tsconfig": "workspace:*",
+    "typescript": "^5.7.2"
+  }
+}

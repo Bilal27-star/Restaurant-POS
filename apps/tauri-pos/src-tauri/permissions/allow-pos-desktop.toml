@@ -1,0 +1,11 @@
+[[permission]]
+identifier = "allow-pos-desktop"
+description = "POS desktop shell: ESC/POS dispatch, stable data dirs, autostart control, and build metadata."
+commands.allow = [
+  "print_escpos_base64",
+  "list_usb_printer_paths",
+  "pos_desktop_paths",
+  "pos_backend_status",
+  "pos_set_launch_on_login",
+  "pos_app_metadata",
+]

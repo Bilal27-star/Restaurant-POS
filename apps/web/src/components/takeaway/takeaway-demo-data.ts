@@ -1,0 +1,116 @@
+import type { TakeawayOfflineOrder } from "./takeaway-offline-order";
+
+function now() {
+  return Date.now();
+}
+
+/** Seeded relative to load time so timers feel “live” in the demo. */
+export function createInitialTakeawayOrders(): TakeawayOfflineOrder[] {
+  const t = now();
+  return [
+    {
+      id: "tw-1",
+      takeawayNumber: 23,
+      posReference: "#1245",
+      customerName: "Lisa M.",
+      customerPhone: "+213 555 111 222",
+      customerAddress: "12 Rue Didouche Mourad, Alger",
+      customerDeliveryNotes: "",
+      items: [
+        { quantity: 2, name: "Pizza Margherita" },
+        { quantity: 2, name: "Canette" },
+      ],
+      kitchenNotes: "",
+      totalAmountDa: 1850,
+      status: "preparing",
+      createdAtMs: t - 18 * 60_000,
+      estimatedReadyAtMs: t + 8 * 60_000,
+    },
+    {
+      id: "tw-2",
+      takeawayNumber: 24,
+      posReference: "#1246",
+      customerName: "Karim B.",
+      customerPhone: "+213 555 222 333",
+      customerAddress: "Cité 200 logements, Bloc 4, Oran",
+      customerDeliveryNotes: "Sonner 2× à l’interphone",
+      items: [
+        { quantity: 1, name: "Burger Classic" },
+        { quantity: 1, name: "Frites" },
+      ],
+      kitchenNotes: "Extra sauce",
+      totalAmountDa: 920,
+      status: "new",
+      createdAtMs: t - 6 * 60_000,
+      estimatedReadyAtMs: t + 14 * 60_000,
+    },
+    {
+      id: "tw-3",
+      takeawayNumber: 25,
+      posReference: "#1247",
+      customerName: "Sara H.",
+      customerPhone: "+213 555 333 444",
+      customerAddress: "Résidence Les Pins, Constantine",
+      customerDeliveryNotes: "",
+      items: [{ quantity: 1, name: "Pizza 4 Fromages" }],
+      kitchenNotes: "Moins épicé",
+      totalAmountDa: 800,
+      status: "new",
+      createdAtMs: t - 3 * 60_000,
+      estimatedReadyAtMs: t - 2 * 60_000,
+    },
+    {
+      id: "tw-4",
+      takeawayNumber: 22,
+      posReference: "#1240",
+      customerName: "Yacine T.",
+      customerPhone: "+213 555 444 555",
+      customerAddress: "Bab Ezzouar, près de la mosquée",
+      customerDeliveryNotes: "",
+      items: [
+        { quantity: 3, name: "Tacos M" },
+        { quantity: 1, name: "Boisson" },
+      ],
+      kitchenNotes: "Sans oignons",
+      totalAmountDa: 1450,
+      status: "delivered",
+      createdAtMs: t - 3 * 60 * 60_000,
+      deliveredAtMs: t - 2.9 * 60 * 60_000,
+      estimatedReadyAtMs: t - 2.5 * 60 * 60_000,
+    },
+    {
+      id: "tw-5",
+      takeawayNumber: 21,
+      posReference: "#1238",
+      customerName: "Nadia K.",
+      customerPhone: "+213 555 555 666",
+      customerAddress: "Hydra, villa 7",
+      customerDeliveryNotes: "Chien dans le jardin — appeler en arrivant",
+      items: [{ quantity: 2, name: "Salade César" }],
+      kitchenNotes: "",
+      totalAmountDa: 650,
+      status: "delivered",
+      createdAtMs: t - 4 * 60 * 60_000,
+      deliveredAtMs: t - 3.85 * 60 * 60_000,
+      estimatedReadyAtMs: t - 3.8 * 60 * 60_000,
+    },
+    {
+      id: "tw-6",
+      takeawayNumber: 26,
+      posReference: "#1248",
+      customerName: "Omar D.",
+      customerPhone: "+213 555 666 777",
+      customerAddress: "Centre-ville, Sétif",
+      customerDeliveryNotes: "",
+      items: [
+        { quantity: 1, name: "Chawarma poulet" },
+        { quantity: 2, name: "Harissa" },
+      ],
+      kitchenNotes: "Emballage séparé",
+      totalAmountDa: 1100,
+      status: "ready",
+      createdAtMs: t - 22 * 60_000,
+      estimatedReadyAtMs: t - 2 * 60_000,
+    },
+  ];
+}

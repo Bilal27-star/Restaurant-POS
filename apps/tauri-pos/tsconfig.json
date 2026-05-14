@@ -1,0 +1,8 @@
+{
+  "extends": "@pos/tsconfig/tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "types": []
+  },
+  "include": ["src/**/*.ts"]
+}
