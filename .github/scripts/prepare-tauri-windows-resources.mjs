@@ -110,20 +110,45 @@ function writeBundledApi() {
   }
 
   console.log(
-    "Installing production dependencies inside bundled-api..."
-  );
+  "Preparing package.json for production install..."
+);
 
-  execFileSync(
-    "cmd",
-    [
-      "/c",
-      "npm install --production --no-audit --no-fund",
-    ],
-    {
-      cwd: bundledApi,
-      stdio: "inherit",
-    }
-  );
+// إزالة workspace dependencies قبل npm install
+for (const dep of Object.keys(pkg.dependencies)) {
+  const value = pkg.dependencies[dep];
+
+  if (
+    typeof value === "string" &&
+    value.startsWith("workspace:")
+  ) {
+    delete pkg.dependencies[dep];
+  }
+}
+
+// إضافة الحزم المحلية مباشرة
+pkg.dependencies["@pos/database"] = "file:node_modules/@pos/database";
+pkg.dependencies["@pos/contracts"] = "file:node_modules/@pos/contracts";
+
+fs.writeFileSync(
+  path.join(bundledApi, "package.json"),
+  JSON.stringify(pkg, null, 2)
+);
+
+console.log(
+  "Installing production dependencies inside bundled-api..."
+);
+
+execFileSync(
+  "cmd",
+  [
+    "/c",
+    "npm install --production --no-audit --no-fund",
+  ],
+  {
+    cwd: bundledApi,
+    stdio: "inherit",
+  }
+);
 
   console.log(
     "Copying workspace packages..."
