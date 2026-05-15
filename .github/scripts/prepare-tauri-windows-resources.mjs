@@ -1,8 +1,6 @@
 /**
  * GitHub Actions / Windows: materialize
- * `apps/tauri-pos/src-tauri/resources/bundled-api`
- * and `node-runtime` so `tauri build`
- * can bundle them.
+ * bundled-api + embedded node runtime
  */
 
 import { execFileSync } from "node:child_process";
@@ -52,25 +50,21 @@ function ensureApiBuilt() {
   );
 }
 
-function cleanWorkspaceDeps(obj) {
-  if (!obj) {
-    return {};
-  }
-
-  const cleaned = {};
+function removeWorkspaceDeps(obj = {}) {
+  const result = {};
 
   for (const [key, value] of Object.entries(obj)) {
     if (
       typeof value === "string" &&
-      value.startsWith("workspace:")
+      value.includes("workspace:")
     ) {
       continue;
     }
 
-    cleaned[key] = value;
+    result[key] = value;
   }
 
-  return cleaned;
+  return result;
 }
 
 function writeBundledApi() {
@@ -83,47 +77,48 @@ function writeBundledApi() {
     recursive: true,
   });
 
-  const pkgPath = path.join(
-    apiRoot,
-    "package.json"
-  );
-
   const pkg = JSON.parse(
-    fs.readFileSync(pkgPath, "utf8")
+    fs.readFileSync(
+      path.join(apiRoot, "package.json"),
+      "utf8"
+    )
   );
 
-  // تنظيف workspace deps
-  pkg.dependencies = cleanWorkspaceDeps(
-    pkg.dependencies
-  );
-
-  pkg.peerDependencies =
-    cleanWorkspaceDeps(
-      pkg.peerDependencies
-    );
-
-  pkg.optionalDependencies =
-    cleanWorkspaceDeps(
-      pkg.optionalDependencies
+  // تنظيف كامل لكل workspace deps
+  pkg.dependencies =
+    removeWorkspaceDeps(
+      pkg.dependencies || {}
     );
 
   pkg.devDependencies = {};
 
-  // إضافة الحزم المحلية
+  pkg.peerDependencies =
+    removeWorkspaceDeps(
+      pkg.peerDependencies || {}
+    );
+
+  pkg.optionalDependencies =
+    removeWorkspaceDeps(
+      pkg.optionalDependencies || {}
+    );
+
+  // إزالة workspaces field نفسه
+  delete pkg.workspaces;
+
+  // dependencies المحلية
   pkg.dependencies["@pos/database"] =
     "file:./packages/database";
 
   pkg.dependencies["@pos/contracts"] =
     "file:./packages/contracts";
 
-  // embedded postgres
   pkg.dependencies["embedded-postgres"] =
     "18.3.0-beta.17";
 
-  // كتابة package.json
+  // كتابة package.json الجديد
   fs.writeFileSync(
     path.join(bundledApi, "package.json"),
-    `${JSON.stringify(pkg, null, 2)}\n`
+    JSON.stringify(pkg, null, 2)
   );
 
   // نسخ dist
@@ -187,7 +182,7 @@ function writeBundledApi() {
     }
   );
 
-  // نسخ env
+  // env
   const envExample = path.join(
     apiRoot,
     ".env.example"
@@ -204,14 +199,14 @@ function writeBundledApi() {
   }
 
   console.log(
-    "Installing production dependencies inside bundled-api..."
+    "Installing production dependencies..."
   );
 
   execFileSync(
     "cmd",
     [
       "/c",
-      "npm install --production --no-audit --no-fund",
+      "npm install --omit=dev --no-audit --no-fund",
     ],
     {
       cwd: bundledApi,
@@ -263,7 +258,7 @@ async function downloadWindowsEmbeddedNode() {
 
   if (!res.ok) {
     throw new Error(
-      `Failed to download Node: ${url} (${res.status})`
+      `Failed to download Node: ${url}`
     );
   }
 
@@ -291,12 +286,6 @@ async function downloadWindowsEmbeddedNode() {
     "node.exe"
   );
 
-  if (!fs.existsSync(nodeExe)) {
-    throw new Error(
-      `Expected ${nodeExe} after extracting ${zipName}`
-    );
-  }
-
   fs.copyFileSync(
     nodeExe,
     path.join(
@@ -319,7 +308,7 @@ async function downloadWindowsEmbeddedNode() {
   });
 
   console.log(
-    `prepare-tauri-windows-resources: embedded Node ${NODE_WIN_VER} -> ${nodeBinDir}`
+    `Embedded Node ready: ${NODE_WIN_VER}`
   );
 }
 
@@ -329,6 +318,4 @@ writeBundledApi();
 
 await downloadWindowsEmbeddedNode();
 
-console.log(
-  "prepare-tauri-windows-resources: done"
-);
+console.log("prepare-tauri-windows-resources: done");
