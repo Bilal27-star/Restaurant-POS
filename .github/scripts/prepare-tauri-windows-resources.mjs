@@ -1,9 +1,8 @@
 /**
- * GitHub Actions / Windows: materialize `apps/tauri-pos/src-tauri/resources/bundled-api`
- * and `node-runtime` so `tauri build` can bundle them (these paths are gitignored).
- *
- * Run from repository root:
- * node .github/scripts/prepare-tauri-windows-resources.mjs
+ * GitHub Actions / Windows: materialize
+ * `apps/tauri-pos/src-tauri/resources/bundled-api`
+ * and `node-runtime` so `tauri build`
+ * can bundle them.
  */
 
 import { execFileSync } from "node:child_process";
@@ -11,7 +10,9 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const __dirname = path.dirname(
+  fileURLToPath(import.meta.url)
+);
 
 const root = path.resolve(__dirname, "../..");
 
@@ -25,7 +26,10 @@ const bundledApi = path.join(
   "bundled-api"
 );
 
-const apiRoot = path.join(root, "apps/api");
+const apiRoot = path.join(
+  root,
+  "apps/api"
+);
 
 const nodeBinDir = path.join(
   resources,
@@ -48,6 +52,27 @@ function ensureApiBuilt() {
   );
 }
 
+function cleanWorkspaceDeps(obj) {
+  if (!obj) {
+    return {};
+  }
+
+  const cleaned = {};
+
+  for (const [key, value] of Object.entries(obj)) {
+    if (
+      typeof value === "string" &&
+      value.startsWith("workspace:")
+    ) {
+      continue;
+    }
+
+    cleaned[key] = value;
+  }
+
+  return cleaned;
+}
+
 function writeBundledApi() {
   fs.rmSync(bundledApi, {
     recursive: true,
@@ -67,19 +92,22 @@ function writeBundledApi() {
     fs.readFileSync(pkgPath, "utf8")
   );
 
-  pkg.dependencies = pkg.dependencies ?? {};
+  // تنظيف workspace deps
+  pkg.dependencies = cleanWorkspaceDeps(
+    pkg.dependencies
+  );
 
-  // حذف workspace dependencies
-  for (const dep of Object.keys(pkg.dependencies)) {
-    const value = pkg.dependencies[dep];
+  pkg.peerDependencies =
+    cleanWorkspaceDeps(
+      pkg.peerDependencies
+    );
 
-    if (
-      typeof value === "string" &&
-      value.startsWith("workspace:")
-    ) {
-      delete pkg.dependencies[dep];
-    }
-  }
+  pkg.optionalDependencies =
+    cleanWorkspaceDeps(
+      pkg.optionalDependencies
+    );
+
+  pkg.devDependencies = {};
 
   // إضافة الحزم المحلية
   pkg.dependencies["@pos/database"] =
@@ -89,12 +117,8 @@ function writeBundledApi() {
     "file:./packages/contracts";
 
   // embedded postgres
-  if (!pkg.dependencies["embedded-postgres"]) {
-    pkg.dependencies["embedded-postgres"] =
-      "18.3.0-beta.17";
-  }
-
-  delete pkg.devDependencies;
+  pkg.dependencies["embedded-postgres"] =
+    "18.3.0-beta.17";
 
   // كتابة package.json
   fs.writeFileSync(
@@ -103,15 +127,21 @@ function writeBundledApi() {
   );
 
   // نسخ dist
-  const distSrc = path.join(apiRoot, "dist");
+  const distSrc = path.join(
+    apiRoot,
+    "dist"
+  );
 
   if (
     !fs.existsSync(
-      path.join(distSrc, "desktop-runtime.js")
+      path.join(
+        distSrc,
+        "desktop-runtime.js"
+      )
     )
   ) {
     console.error(
-      "prepare-tauri-windows-resources: desktop-runtime.js missing"
+      "desktop-runtime.js missing"
     );
 
     process.exit(1);
@@ -125,7 +155,7 @@ function writeBundledApi() {
     }
   );
 
-  // نسخ packages المحلية
+  // نسخ الحزم المحلية
   const localPackagesDir = path.join(
     bundledApi,
     "packages"
@@ -137,7 +167,10 @@ function writeBundledApi() {
 
   fs.cpSync(
     path.join(root, "packages/database"),
-    path.join(localPackagesDir, "database"),
+    path.join(
+      localPackagesDir,
+      "database"
+    ),
     {
       recursive: true,
     }
@@ -145,7 +178,10 @@ function writeBundledApi() {
 
   fs.cpSync(
     path.join(root, "packages/contracts"),
-    path.join(localPackagesDir, "contracts"),
+    path.join(
+      localPackagesDir,
+      "contracts"
+    ),
     {
       recursive: true,
     }
@@ -160,7 +196,10 @@ function writeBundledApi() {
   if (fs.existsSync(envExample)) {
     fs.copyFileSync(
       envExample,
-      path.join(bundledApi, ".env")
+      path.join(
+        bundledApi,
+        ".env"
+      )
     );
   }
 
@@ -215,7 +254,10 @@ async function downloadWindowsEmbeddedNode() {
     recursive: true,
   });
 
-  const zipPath = path.join(tmp, zipName);
+  const zipPath = path.join(
+    tmp,
+    zipName
+  );
 
   const res = await fetch(url);
 
@@ -257,12 +299,18 @@ async function downloadWindowsEmbeddedNode() {
 
   fs.copyFileSync(
     nodeExe,
-    path.join(nodeBinDir, "node.exe")
+    path.join(
+      nodeBinDir,
+      "node.exe"
+    )
   );
 
   fs.copyFileSync(
     nodeExe,
-    path.join(nodeBinDir, "node")
+    path.join(
+      nodeBinDir,
+      "node"
+    )
   );
 
   fs.rmSync(tmp, {
