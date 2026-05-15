@@ -11,9 +11,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const __dirname = path.dirname(
-  fileURLToPath(import.meta.url)
-);
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const root = path.resolve(__dirname, "../..");
 
@@ -27,10 +25,7 @@ const bundledApi = path.join(
   "bundled-api"
 );
 
-const apiRoot = path.join(
-  root,
-  "apps/api"
-);
+const apiRoot = path.join(root, "apps/api");
 
 const nodeBinDir = path.join(
   resources,
@@ -39,7 +34,8 @@ const nodeBinDir = path.join(
 );
 
 const NODE_WIN_VER =
-  process.env.CI_NODE_WIN_X64_VERSION ?? "20.18.1";
+  process.env.CI_NODE_WIN_X64_VERSION ??
+  "20.18.1";
 
 function ensureApiBuilt() {
   execFileSync(
@@ -71,22 +67,54 @@ function writeBundledApi() {
     fs.readFileSync(pkgPath, "utf8")
   );
 
+  pkg.dependencies = pkg.dependencies ?? {};
+
+  // حذف workspace dependencies
+  for (const dep of Object.keys(pkg.dependencies)) {
+    const value = pkg.dependencies[dep];
+
+    if (
+      typeof value === "string" &&
+      value.startsWith("workspace:")
+    ) {
+      delete pkg.dependencies[dep];
+    }
+  }
+
+  // إضافة الحزم المحلية
+  pkg.dependencies["@pos/database"] =
+    "file:./packages/database";
+
+  pkg.dependencies["@pos/contracts"] =
+    "file:./packages/contracts";
+
+  // embedded postgres
+  if (!pkg.dependencies["embedded-postgres"]) {
+    pkg.dependencies["embedded-postgres"] =
+      "18.3.0-beta.17";
+  }
+
   delete pkg.devDependencies;
 
+  // كتابة package.json
   fs.writeFileSync(
     path.join(bundledApi, "package.json"),
-    JSON.stringify(pkg, null, 2)
+    `${JSON.stringify(pkg, null, 2)}\n`
   );
 
-  const distSrc = path.join(
-    apiRoot,
-    "dist"
-  );
+  // نسخ dist
+  const distSrc = path.join(apiRoot, "dist");
 
-  if (!fs.existsSync(distSrc)) {
-    throw new Error(
-      "apps/api/dist missing"
+  if (
+    !fs.existsSync(
+      path.join(distSrc, "desktop-runtime.js")
+    )
+  ) {
+    console.error(
+      "prepare-tauri-windows-resources: desktop-runtime.js missing"
     );
+
+    process.exit(1);
   }
 
   fs.cpSync(
@@ -97,6 +125,33 @@ function writeBundledApi() {
     }
   );
 
+  // نسخ packages المحلية
+  const localPackagesDir = path.join(
+    bundledApi,
+    "packages"
+  );
+
+  fs.mkdirSync(localPackagesDir, {
+    recursive: true,
+  });
+
+  fs.cpSync(
+    path.join(root, "packages/database"),
+    path.join(localPackagesDir, "database"),
+    {
+      recursive: true,
+    }
+  );
+
+  fs.cpSync(
+    path.join(root, "packages/contracts"),
+    path.join(localPackagesDir, "contracts"),
+    {
+      recursive: true,
+    }
+  );
+
+  // نسخ env
   const envExample = path.join(
     apiRoot,
     ".env.example"
@@ -110,78 +165,19 @@ function writeBundledApi() {
   }
 
   console.log(
-  "Preparing package.json for production install..."
-);
-
-// إزالة workspace dependencies قبل npm install
-for (const dep of Object.keys(pkg.dependencies)) {
-  const value = pkg.dependencies[dep];
-
-  if (
-    typeof value === "string" &&
-    value.startsWith("workspace:")
-  ) {
-    delete pkg.dependencies[dep];
-  }
-}
-
-// إضافة الحزم المحلية مباشرة
-pkg.dependencies["@pos/database"] = "file:node_modules/@pos/database";
-pkg.dependencies["@pos/contracts"] = "file:node_modules/@pos/contracts";
-
-fs.writeFileSync(
-  path.join(bundledApi, "package.json"),
-  JSON.stringify(pkg, null, 2)
-);
-
-console.log(
-  "Installing production dependencies inside bundled-api..."
-);
-
-execFileSync(
-  "cmd",
-  [
-    "/c",
-    "npm install --production --no-audit --no-fund",
-  ],
-  {
-    cwd: bundledApi,
-    stdio: "inherit",
-  }
-);
-
-  console.log(
-    "Copying workspace packages..."
+    "Installing production dependencies inside bundled-api..."
   );
 
-  const posScope = path.join(
-    bundledApi,
-    "node_modules",
-    "@pos"
-  );
-
-  fs.mkdirSync(posScope, {
-    recursive: true,
-  });
-
-  fs.cpSync(
-    path.join(root, "packages/database"),
-    path.join(posScope, "database"),
+  execFileSync(
+    "cmd",
+    [
+      "/c",
+      "npm install --production --no-audit --no-fund",
+    ],
     {
-      recursive: true,
+      cwd: bundledApi,
+      stdio: "inherit",
     }
-  );
-
-  fs.cpSync(
-    path.join(root, "packages/contracts"),
-    path.join(posScope, "contracts"),
-    {
-      recursive: true,
-    }
-  );
-
-  console.log(
-    "Bundled API prepared successfully."
   );
 }
 
@@ -219,10 +215,7 @@ async function downloadWindowsEmbeddedNode() {
     recursive: true,
   });
 
-  const zipPath = path.join(
-    tmp,
-    zipName
-  );
+  const zipPath = path.join(tmp, zipName);
 
   const res = await fetch(url);
 
@@ -236,10 +229,7 @@ async function downloadWindowsEmbeddedNode() {
     await res.arrayBuffer()
   );
 
-  fs.writeFileSync(
-    zipPath,
-    buf
-  );
+  fs.writeFileSync(zipPath, buf);
 
   execFileSync(
     "tar",
@@ -267,18 +257,12 @@ async function downloadWindowsEmbeddedNode() {
 
   fs.copyFileSync(
     nodeExe,
-    path.join(
-      nodeBinDir,
-      "node.exe"
-    )
+    path.join(nodeBinDir, "node.exe")
   );
 
   fs.copyFileSync(
     nodeExe,
-    path.join(
-      nodeBinDir,
-      "node"
-    )
+    path.join(nodeBinDir, "node")
   );
 
   fs.rmSync(tmp, {
