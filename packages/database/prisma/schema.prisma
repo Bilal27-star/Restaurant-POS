@@ -5,7 +5,11 @@
 // =============================================================================
 
 generator client {
-  provider = "prisma-client-js"
+  provider      = "prisma-client-js"
+  /// Ship query engines for all desktop targets (build host + other OS/arch).
+  /// `native` matches the machine running `prisma generate` (CI + dev); others cover installed apps.
+  engineType     = "binary"
+  binaryTargets  = ["native", "darwin-arm64", "darwin", "windows"]
 }
 
 datasource db {

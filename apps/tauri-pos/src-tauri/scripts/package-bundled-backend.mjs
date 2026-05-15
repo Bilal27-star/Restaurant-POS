@@ -5,7 +5,7 @@
  *   - `dist/` (compiled API + desktop-runtime)
  *   - `packages/database` + `packages/contracts` (vendored sources, no workspace:*)
  *   - `node_modules/` from `npm install --omit=dev` (no pnpm workspace)
- *   - Prisma client generated for this tree (`prisma generate`)
+ *   - Prisma Client generated with **binary** engines for `native`, `darwin-arm64`, `darwin` (Intel), `windows`
  *   - `resources/node-runtime/bin/` — official Node binary for the **host** OS/arch (macOS arm64/x64, Windows x64)
  *
  * After installation, only `resource_dir` + app data are needed — no monorepo paths.
@@ -108,19 +108,37 @@ function writeBundledApi() {
     if (sub.peerDependencies) sub.peerDependencies = removeWorkspaceDeps(sub.peerDependencies);
     if (sub.optionalDependencies) sub.optionalDependencies = removeWorkspaceDeps(sub.optionalDependencies);
     delete sub.workspaces;
+    if (name === "database" && sub.scripts) {
+      delete sub.scripts.postinstall;
+    }
     fs.writeFileSync(p, `${JSON.stringify(sub, null, 2)}\n`);
   }
 
   const envExample = path.join(apiRoot, ".env.example");
   if (fs.existsSync(envExample)) {
-    fs.copyFileSync(envExample, path.join(bundledApi, ".env"));
+    let envText = fs.readFileSync(envExample, "utf8");
+    // Embedded Postgres sets DATABASE_URL at runtime; do not ship a dev URL that confuses tooling.
+    envText = envText
+      .split("\n")
+      .filter((line) => !/^\s*DATABASE_URL\s*=/.test(line))
+      .join("\n");
+    envText += "\n# DATABASE_URL is set at runtime by desktop-runtime (embedded PostgreSQL).\n";
+    fs.writeFileSync(path.join(bundledApi, ".env"), envText);
   }
+
+  const bundleDatabaseUrl =
+    process.env.DATABASE_URL ??
+    "postgresql://postgres:postgres@127.0.0.1:5432/pos_bundle_placeholder?schema=public";
 
   console.log("package-bundled-backend: npm install --omit=dev in bundled-api…");
   execFileSync("npm", ["install", "--omit=dev", "--no-audit", "--no-fund", "--loglevel=error"], {
     cwd: bundledApi,
     stdio: "inherit",
-    env: { ...process.env, npm_config_engine_strict: "false" },
+    env: {
+      ...process.env,
+      npm_config_engine_strict: "false",
+      DATABASE_URL: bundleDatabaseUrl,
+    },
   });
 
   const prismaSchema = path.join(bundledApi, "packages/database/prisma/schema.prisma");
@@ -129,7 +147,13 @@ function writeBundledApi() {
     console.error("package-bundled-backend: prisma CLI not found at", prismaCli);
     process.exit(1);
   }
-  console.log("package-bundled-backend: prisma generate…");
+
+  const prismaCache = path.join(bundledApi, "node_modules", ".prisma");
+  if (fs.existsSync(prismaCache)) {
+    fs.rmSync(prismaCache, { recursive: true, force: true });
+  }
+
+  console.log("package-bundled-backend: prisma generate (desktop binaryTargets)…");
   execFileSync(
     process.execPath,
     [prismaCli, "generate", "--schema", prismaSchema],
@@ -138,9 +162,8 @@ function writeBundledApi() {
       stdio: "inherit",
       env: {
         ...process.env,
-        DATABASE_URL:
-          process.env.DATABASE_URL ??
-          "postgresql://postgres:postgres@127.0.0.1:5432/pos_prisma_placeholder?schema=public",
+        DATABASE_URL: bundleDatabaseUrl,
+        PRISMA_GENERATE_SKIP_AUTOINSTALL: "true",
       },
     },
   );

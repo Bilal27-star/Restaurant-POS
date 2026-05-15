@@ -53,6 +53,19 @@ function resolveBundleRoot(): string {
   return path.resolve(__dirname, "..");
 }
 
+/** Prevent host/CI Prisma env vars from pointing outside the shipped bundle. */
+function isolateBundledPrismaEnv() {
+  for (const k of [
+    "PRISMA_QUERY_ENGINE_LIBRARY",
+    "PRISMA_SCHEMA_ENGINE_BINARY",
+    "PRISMA_MIGRATION_ENGINE_BINARY",
+    "PRISMA_INTROSPECTION_ENGINE_BINARY",
+  ]) {
+    if (process.env[k] !== undefined) delete process.env[k];
+  }
+  process.env.PRISMA_CLIENT_ENGINE_TYPE = "binary";
+}
+
 function resolveDatabasePackageDir(bundleRoot: string): string {
   const npmLayout = path.join(bundleRoot, "node_modules", "@pos", "database");
   const vendorLayout = path.join(bundleRoot, "packages", "database");
@@ -91,6 +104,7 @@ function runPrismaMigrateDeploy(databaseUrl: string, bundleRoot: string) {
 async function main() {
   loadRuntimeEnvFiles();
   const bundleRoot = resolveBundleRoot();
+  isolateBundledPrismaEnv();
   appendBackendLine(`bundleRoot=${bundleRoot} execPath=${process.execPath} cwd=${process.cwd()}`);
   const appData = process.env.POS_APP_DATA_DIR ?? path.join(bundleRoot, "..", ".pos-desktop-data");
   const pgDataDir = process.env.POS_EMBEDDED_PG_DATADIR ?? path.join(appData, "postgres");
