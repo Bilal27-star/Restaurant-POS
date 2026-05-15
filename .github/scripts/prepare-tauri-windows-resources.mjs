@@ -2,7 +2,8 @@
  * GitHub Actions / Windows: materialize `apps/tauri-pos/src-tauri/resources/bundled-api`
  * and `node-runtime` so `tauri build` can bundle them (these paths are gitignored).
  *
- * Run from repository root: `node .github/scripts/prepare-tauri-windows-resources.mjs`
+ * Run from repository root:
+ * node .github/scripts/prepare-tauri-windows-resources.mjs
  */
 
 import { execFileSync } from "node:child_process";
@@ -10,7 +11,9 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const __dirname = path.dirname(
+  fileURLToPath(import.meta.url)
+);
 
 const root = path.resolve(__dirname, "../..");
 
@@ -81,7 +84,9 @@ function writeBundledApi() {
   );
 
   if (!fs.existsSync(distSrc)) {
-    throw new Error("apps/api/dist missing");
+    throw new Error(
+      "apps/api/dist missing"
+    );
   }
 
   fs.cpSync(
@@ -105,14 +110,18 @@ function writeBundledApi() {
   }
 
   console.log(
-    "Copying root node_modules..."
+    "Installing production dependencies inside bundled-api..."
   );
 
-  fs.cpSync(
-    path.join(root, "node_modules"),
-    path.join(bundledApi, "node_modules"),
+  execFileSync(
+    "cmd",
+    [
+      "/c",
+      "npm install --production --no-audit --no-fund",
+    ],
     {
-      recursive: true,
+      cwd: bundledApi,
+      stdio: "inherit",
     }
   );
 
@@ -202,7 +211,10 @@ async function downloadWindowsEmbeddedNode() {
     await res.arrayBuffer()
   );
 
-  fs.writeFileSync(zipPath, buf);
+  fs.writeFileSync(
+    zipPath,
+    buf
+  );
 
   execFileSync(
     "tar",
@@ -230,12 +242,18 @@ async function downloadWindowsEmbeddedNode() {
 
   fs.copyFileSync(
     nodeExe,
-    path.join(nodeBinDir, "node.exe")
+    path.join(
+      nodeBinDir,
+      "node.exe"
+    )
   );
 
   fs.copyFileSync(
     nodeExe,
-    path.join(nodeBinDir, "node")
+    path.join(
+      nodeBinDir,
+      "node"
+    )
   );
 
   fs.rmSync(tmp, {
