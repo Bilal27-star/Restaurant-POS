@@ -14,131 +14,384 @@ import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(__dirname, "../..");
-const resources = path.join(root, "apps/tauri-pos/src-tauri/resources");
+
+const resources = path.join(
+  root,
+  "apps/tauri-pos/src-tauri/resources"
+);
+
 const bundledApi = path.join(resources, "bundled-api");
+
 const apiRoot = path.join(root, "apps/api");
-const nodeBinDir = path.join(resources, "node-runtime", "bin");
 
-const NODE_WIN_VER = process.env.CI_NODE_WIN_X64_VERSION ?? "20.18.1";
+const nodeBinDir = path.join(
+  resources,
+  "node-runtime",
+  "bin"
+);
 
-function ensureApiBuilt() {
-  execFileSync("pnpm", ["--filter", "@pos/api", "run", "build"], {
-    cwd: root,
-    stdio: "inherit",
-  });
+const NODE_WIN_VER =
+  process.env.CI_NODE_WIN_X64_VERSION ?? "20.18.1";
+
+function runWindowsCommand(command, cwd = root) {
+  execFileSync(
+    "cmd",
+    ["/c", command],
+    {
+      cwd,
+      stdio: "inherit",
+      shell: true,
+      env: {
+        ...process.env,
+      },
+    }
+  );
 }
 
-/** Drop any remaining workspace: specifiers (npm cannot resolve them outside a pnpm workspace). */
+function ensureApiBuilt() {
+  console.log("Building API...");
+  runWindowsCommand(
+    "pnpm --filter @pos/api run build"
+  );
+}
+
+/**
+ * Remove workspace:* dependencies recursively.
+ */
 function removeWorkspaceDeps(obj = {}) {
   const result = {};
+
   for (const [key, value] of Object.entries(obj)) {
-    if (typeof value === "string" && value.includes("workspace:")) {
+    if (
+      typeof value === "string" &&
+      value.startsWith("workspace:")
+    ) {
       continue;
     }
+
     result[key] = value;
   }
+
   return result;
 }
 
-function writeBundledApi() {
-  fs.rmSync(bundledApi, { recursive: true, force: true });
-  fs.mkdirSync(bundledApi, { recursive: true });
+function cleanPackageJson(packageJsonPath) {
+  if (!fs.existsSync(packageJsonPath)) {
+    return;
+  }
 
-  const pkg = JSON.parse(fs.readFileSync(path.join(apiRoot, "package.json"), "utf8"));
+  const pkg = JSON.parse(
+    fs.readFileSync(packageJsonPath, "utf8")
+  );
 
-  pkg.dependencies = removeWorkspaceDeps(pkg.dependencies || {});
+  pkg.dependencies = removeWorkspaceDeps(
+    pkg.dependencies || {}
+  );
+
   pkg.devDependencies = {};
-  pkg.peerDependencies = removeWorkspaceDeps(pkg.peerDependencies || {});
-  pkg.optionalDependencies = removeWorkspaceDeps(pkg.optionalDependencies || {});
+
+  pkg.peerDependencies = removeWorkspaceDeps(
+    pkg.peerDependencies || {}
+  );
+
+  pkg.optionalDependencies = removeWorkspaceDeps(
+    pkg.optionalDependencies || {}
+  );
+
   delete pkg.workspaces;
 
-  // Self-contained copies under bundled-api (paths are relative to bundled-api/package.json).
-  pkg.dependencies["@pos/database"] = "file:./packages/database";
-  pkg.dependencies["@pos/contracts"] = "file:./packages/contracts";
+  fs.writeFileSync(
+    packageJsonPath,
+    `${JSON.stringify(pkg, null, 2)}\n`
+  );
+}
+
+function writeBundledApi() {
+  console.log("Preparing bundled-api...");
+
+  fs.rmSync(bundledApi, {
+    recursive: true,
+    force: true,
+  });
+
+  fs.mkdirSync(bundledApi, {
+    recursive: true,
+  });
+
+  const pkgPath = path.join(
+    apiRoot,
+    "package.json"
+  );
+
+  const pkg = JSON.parse(
+    fs.readFileSync(pkgPath, "utf8")
+  );
+
+  pkg.dependencies = removeWorkspaceDeps(
+    pkg.dependencies || {}
+  );
+
+  pkg.devDependencies = {};
+
+  pkg.peerDependencies = removeWorkspaceDeps(
+    pkg.peerDependencies || {}
+  );
+
+  pkg.optionalDependencies = removeWorkspaceDeps(
+    pkg.optionalDependencies || {}
+  );
+
+  delete pkg.workspaces;
+
+  /**
+   * Local packaged dependencies
+   */
+  pkg.dependencies["@pos/database"] =
+    "file:./packages/database";
+
+  pkg.dependencies["@pos/contracts"] =
+    "file:./packages/contracts";
+
   if (!pkg.dependencies["embedded-postgres"]) {
-    pkg.dependencies["embedded-postgres"] = "18.3.0-beta.17";
+    pkg.dependencies["embedded-postgres"] =
+      "18.3.0-beta.17";
   }
 
-  fs.writeFileSync(path.join(bundledApi, "package.json"), `${JSON.stringify(pkg, null, 2)}\n`);
+  fs.writeFileSync(
+    path.join(bundledApi, "package.json"),
+    `${JSON.stringify(pkg, null, 2)}\n`
+  );
 
-  const distSrc = path.join(apiRoot, "dist");
-  if (!fs.existsSync(path.join(distSrc, "desktop-runtime.js"))) {
+  /**
+   * Copy API dist
+   */
+  const distSrc = path.join(
+    apiRoot,
+    "dist"
+  );
+
+  const runtimeFile = path.join(
+    distSrc,
+    "desktop-runtime.js"
+  );
+
+  if (!fs.existsSync(runtimeFile)) {
     console.error(
-      "prepare-tauri-windows-resources: apps/api/dist/desktop-runtime.js missing — run `pnpm --filter @pos/api run build` first.",
+      "desktop-runtime.js missing"
     );
+
     process.exit(1);
   }
-  fs.cpSync(distSrc, path.join(bundledApi, "dist"), { recursive: true });
 
-  const localPackagesDir = path.join(bundledApi, "packages");
-  fs.mkdirSync(localPackagesDir, { recursive: true });
-  fs.cpSync(path.join(root, "packages/database"), path.join(localPackagesDir, "database"), {
+  fs.cpSync(
+    distSrc,
+    path.join(bundledApi, "dist"),
+    {
+      recursive: true,
+    }
+  );
+
+  /**
+   * Vendor packages locally
+   */
+  const bundledPackages = path.join(
+    bundledApi,
+    "packages"
+  );
+
+  fs.mkdirSync(bundledPackages, {
     recursive: true,
   });
-  fs.cpSync(path.join(root, "packages/contracts"), path.join(localPackagesDir, "contracts"), {
-    recursive: true,
-  });
 
-  // Strip workspace:* from vendored packages so npm does not choke on nested installs.
-  for (const name of ["database", "contracts"]) {
-    const p = path.join(localPackagesDir, name, "package.json");
-    if (!fs.existsSync(p)) continue;
-    const sub = JSON.parse(fs.readFileSync(p, "utf8"));
-    if (sub.dependencies) sub.dependencies = removeWorkspaceDeps(sub.dependencies);
-    if (sub.devDependencies) sub.devDependencies = removeWorkspaceDeps(sub.devDependencies);
-    if (sub.peerDependencies) sub.peerDependencies = removeWorkspaceDeps(sub.peerDependencies);
-    if (sub.optionalDependencies) sub.optionalDependencies = removeWorkspaceDeps(sub.optionalDependencies);
-    delete sub.workspaces;
-    fs.writeFileSync(p, `${JSON.stringify(sub, null, 2)}\n`);
+  const packagesToCopy = [
+    "database",
+    "contracts",
+  ];
+
+  for (const packageName of packagesToCopy) {
+    const source = path.join(
+      root,
+      "packages",
+      packageName
+    );
+
+    const target = path.join(
+      bundledPackages,
+      packageName
+    );
+
+    fs.cpSync(source, target, {
+      recursive: true,
+    });
+
+    /**
+     * Clean nested package.json
+     */
+    cleanPackageJson(
+      path.join(target, "package.json")
+    );
+
+    /**
+     * Remove nested node_modules
+     */
+    fs.rmSync(
+      path.join(target, "node_modules"),
+      {
+        recursive: true,
+        force: true,
+      }
+    );
   }
 
-  const envExample = path.join(apiRoot, ".env.example");
+  /**
+   * Copy .env
+   */
+  const envExample = path.join(
+    apiRoot,
+    ".env.example"
+  );
+
   if (fs.existsSync(envExample)) {
-    fs.copyFileSync(envExample, path.join(bundledApi, ".env"));
+    fs.copyFileSync(
+      envExample,
+      path.join(bundledApi, ".env")
+    );
   }
 
-  console.log("prepare-tauri-windows-resources: npm install (production) in bundled-api…");
-  execFileSync("npm", ["install", "--omit=dev", "--no-audit", "--no-fund", "--loglevel=error"], {
-    cwd: bundledApi,
-    stdio: "inherit",
-    env: { ...process.env, npm_config_engine_strict: "false" },
-  });
+  /**
+   * Remove previous install
+   */
+  fs.rmSync(
+    path.join(bundledApi, "node_modules"),
+    {
+      recursive: true,
+      force: true,
+    }
+  );
+
+  fs.rmSync(
+    path.join(bundledApi, "package-lock.json"),
+    {
+      force: true,
+    }
+  );
+
+  /**
+   * Install production deps
+   */
+  console.log(
+    "Installing production dependencies..."
+  );
+
+  runWindowsCommand(
+    "npm install --omit=dev --no-audit --no-fund --legacy-peer-deps",
+    bundledApi
+  );
 }
 
 async function downloadWindowsEmbeddedNode() {
-  if (process.platform !== "win32") return;
+  if (process.platform !== "win32") {
+    return;
+  }
 
-  fs.rmSync(nodeBinDir, { recursive: true, force: true });
-  fs.mkdirSync(nodeBinDir, { recursive: true });
+  console.log(
+    "Downloading embedded Node runtime..."
+  );
 
-  const zipName = `node-v${NODE_WIN_VER}-win-x64.zip`;
-  const url = `https://nodejs.org/dist/v${NODE_WIN_VER}/${zipName}`;
-  const tmp = path.join(resources, ".ci-node-dl");
-  fs.rmSync(tmp, { recursive: true, force: true });
-  fs.mkdirSync(tmp, { recursive: true });
-  const zipPath = path.join(tmp, zipName);
+  fs.rmSync(nodeBinDir, {
+    recursive: true,
+    force: true,
+  });
+
+  fs.mkdirSync(nodeBinDir, {
+    recursive: true,
+  });
+
+  const zipName =
+    `node-v${NODE_WIN_VER}-win-x64.zip`;
+
+  const url =
+    `https://nodejs.org/dist/v${NODE_WIN_VER}/${zipName}`;
+
+  const tmp = path.join(
+    resources,
+    ".ci-node-dl"
+  );
+
+  fs.rmSync(tmp, {
+    recursive: true,
+    force: true,
+  });
+
+  fs.mkdirSync(tmp, {
+    recursive: true,
+  });
+
+  const zipPath = path.join(
+    tmp,
+    zipName
+  );
 
   const res = await fetch(url);
+
   if (!res.ok) {
-    throw new Error(`Failed to download Node: ${url} (${res.status})`);
+    throw new Error(
+      `Failed to download Node: ${url}`
+    );
   }
-  fs.writeFileSync(zipPath, Buffer.from(await res.arrayBuffer()));
 
-  execFileSync("tar", ["-xf", zipPath, "-C", tmp], { stdio: "inherit" });
+  fs.writeFileSync(
+    zipPath,
+    Buffer.from(await res.arrayBuffer())
+  );
 
-  const extracted = path.join(tmp, `node-v${NODE_WIN_VER}-win-x64`);
-  const nodeExe = path.join(extracted, "node.exe");
+  runWindowsCommand(
+    `tar -xf "${zipPath}" -C "${tmp}"`,
+    root
+  );
+
+  const extracted = path.join(
+    tmp,
+    `node-v${NODE_WIN_VER}-win-x64`
+  );
+
+  const nodeExe = path.join(
+    extracted,
+    "node.exe"
+  );
+
   if (!fs.existsSync(nodeExe)) {
-    throw new Error(`Expected ${nodeExe} after extracting ${zipName}`);
+    throw new Error(
+      `node.exe missing after extraction`
+    );
   }
-  fs.copyFileSync(nodeExe, path.join(nodeBinDir, "node.exe"));
-  fs.copyFileSync(nodeExe, path.join(nodeBinDir, "node"));
 
-  fs.rmSync(tmp, { recursive: true, force: true });
-  console.log(`prepare-tauri-windows-resources: embedded Node ${NODE_WIN_VER} -> ${nodeBinDir}`);
+  fs.copyFileSync(
+    nodeExe,
+    path.join(nodeBinDir, "node.exe")
+  );
+
+  fs.copyFileSync(
+    nodeExe,
+    path.join(nodeBinDir, "node")
+  );
+
+  fs.rmSync(tmp, {
+    recursive: true,
+    force: true,
+  });
+
+  console.log(
+    `Embedded Node ${NODE_WIN_VER} ready`
+  );
 }
 
 ensureApiBuilt();
+
 writeBundledApi();
+
 await downloadWindowsEmbeddedNode();
-console.log("prepare-tauri-windows-resources: done");
+
+console.log(
+  "prepare-tauri-windows-resources: done"
+);
