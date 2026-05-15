@@ -3,7 +3,7 @@
  * Spawned by the desktop shell with POS_BUNDLE_ROOT, POS_APP_DATA_DIR, POS_ENV_FILE.
  */
 import { execFileSync } from "node:child_process";
-import { appendFileSync, mkdirSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync } from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -53,13 +53,34 @@ function resolveBundleRoot(): string {
   return path.resolve(__dirname, "..");
 }
 
-function runPrismaMigrateDeploy(databaseUrl: string, bundleRoot: string) {
+function resolveDatabasePackageDir(bundleRoot: string): string {
+  const npmLayout = path.join(bundleRoot, "node_modules", "@pos", "database");
+  const vendorLayout = path.join(bundleRoot, "packages", "database");
+  if (existsSync(path.join(npmLayout, "prisma", "schema.prisma"))) return npmLayout;
+  if (existsSync(path.join(vendorLayout, "prisma", "schema.prisma"))) return vendorLayout;
+  throw new Error(
+    `Cannot resolve @pos/database (no prisma/schema.prisma under ${npmLayout} or ${vendorLayout}). bundleRoot=${bundleRoot}`,
+  );
+}
+
+function resolvePrismaCli(bundleRoot: string, dbPkgDir: string): string {
+  const hoisted = path.join(bundleRoot, "node_modules", "prisma", "build", "index.js");
+  if (existsSync(hoisted)) return hoisted;
+  const nested = path.join(dbPkgDir, "node_modules", "prisma", "build", "index.js");
+  if (existsSync(nested)) return nested;
   const require = createRequire(path.join(bundleRoot, "package.json"));
-  const dbPkgDir = path.dirname(require.resolve("@pos/database/package.json"));
-  const prismaPkgDir = path.dirname(require.resolve("prisma/package.json", { paths: [dbPkgDir] }));
-  const prismaCli = path.join(prismaPkgDir, "build", "index.js");
+  const dir = path.dirname(require.resolve("prisma/package.json", { paths: [dbPkgDir, bundleRoot] }));
+  return path.join(dir, "build", "index.js");
+}
+
+function runPrismaMigrateDeploy(databaseUrl: string, bundleRoot: string) {
+  const dbPkgDir = resolveDatabasePackageDir(bundleRoot);
+  const prismaCli = resolvePrismaCli(bundleRoot, dbPkgDir);
+  if (!existsSync(prismaCli)) {
+    throw new Error(`Prisma CLI missing at ${prismaCli}`);
+  }
   const schema = path.join(dbPkgDir, "prisma", "schema.prisma");
-  appendBackendLine(`prisma migrate deploy cwd=${dbPkgDir} schema=${schema}`);
+  appendBackendLine(`prisma migrate deploy cwd=${dbPkgDir} schema=${schema} cli=${prismaCli}`);
   execFileSync(process.execPath, [prismaCli, "migrate", "deploy", "--schema", schema], {
     cwd: dbPkgDir,
     env: { ...process.env, DATABASE_URL: databaseUrl },

@@ -8,6 +8,30 @@ use embedded_node::EmbeddedBackend;
 use tauri::Manager;
 use tauri_plugin_log::{Target, TargetKind, TimezoneStrategy};
 
+use std::path::{Path, PathBuf};
+
+/// Prefer `node.exe` on Windows; otherwise `node` under `resources/node-runtime/bin`.
+fn resolve_bundled_node_exe(resource_dir: &Path) -> Option<PathBuf> {
+    let bases = [
+        resource_dir.join("resources/node-runtime/bin"),
+        resource_dir.join("node-runtime/bin"),
+    ];
+    for base in &bases {
+        #[cfg(target_os = "windows")]
+        {
+            let win = base.join("node.exe");
+            if win.exists() {
+                return Some(win);
+            }
+        }
+        let nix = base.join("node");
+        if nix.exists() {
+            return Some(nix);
+        }
+    }
+    None
+}
+
 fn main() {
     #[cfg(debug_assertions)]
     {
@@ -69,44 +93,41 @@ fn main() {
                     resource_dir.join("bundled-api")
                 };
 
-                let node_bin = if resource_dir.join("resources/node-runtime/bin/node").exists() {
-                    resource_dir.join("resources/node-runtime/bin/node")
-                } else {
-                    resource_dir.join("node-runtime/bin/node")
+                let node_exe = match resolve_bundled_node_exe(&resource_dir) {
+                    Some(node_path) => {
+                        #[cfg(target_os = "macos")]
+                        {
+                            use std::os::unix::fs::PermissionsExt;
+                            if let Ok(metadata) = std::fs::metadata(&node_path) {
+                                let mut perms = metadata.permissions();
+                                if perms.mode() & 0o111 == 0 {
+                                    log::info!("Making node binary executable: {:?}", node_path);
+                                    perms.set_mode(perms.mode() | 0o111);
+                                    if let Err(e) = std::fs::set_permissions(&node_path, perms) {
+                                        log::error!("Failed to set permissions for node binary: {}", e);
+                                    }
+                                }
+                            }
+                        }
+                        node_path
+                    }
+                    None => {
+                        log::warn!(
+                            "Bundled Node not found under resource_dir ({:?}); using `node` from PATH",
+                            resource_dir
+                        );
+                        PathBuf::from("node")
+                    }
                 };
 
                 let runtime_path = bundled_api_dir.join("dist/desktop-runtime.js");
 
                 log::info!(
-                    "Resolved paths: bundled_api_dir={:?}, node_bin={:?}, runtime_path={:?}",
+                    "Resolved paths: bundled_api_dir={:?}, node_exe={:?}, runtime_path={:?}",
                     bundled_api_dir,
-                    node_bin,
+                    node_exe,
                     runtime_path
                 );
-
-                let node_exe = if node_bin.exists() {
-                    #[cfg(target_os = "macos")]
-                    {
-                        use std::os::unix::fs::PermissionsExt;
-                        if let Ok(metadata) = std::fs::metadata(&node_bin) {
-                            let mut perms = metadata.permissions();
-                            if perms.mode() & 0o111 == 0 {
-                                log::info!("Making node binary executable: {:?}", node_bin);
-                                perms.set_mode(perms.mode() | 0o111);
-                                if let Err(e) = std::fs::set_permissions(&node_bin, perms) {
-                                    log::error!("Failed to set permissions for node binary: {}", e);
-                                }
-                            }
-                        }
-                    }
-                    node_bin.clone()
-                } else {
-                    log::warn!(
-                        "Bundled node binary not found at {:?}, falling back to system 'node'",
-                        node_bin
-                    );
-                    std::path::PathBuf::from("node")
-                };
 
                 if !runtime_path.exists() {
                     log::error!("Backend runtime script not found at {:?}", runtime_path);

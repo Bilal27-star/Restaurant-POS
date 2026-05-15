@@ -60,9 +60,6 @@ jobs:
       - name: Install workspace dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Prepare Tauri resources (bundled API + embedded Node)
-        run: pnpm exec node .github/scripts/prepare-tauri-windows-resources.mjs
-
       - name: Build Tauri Windows bundles (NSIS .exe + MSI)
         run: pnpm --filter @pos/tauri-pos run build:windows
 
