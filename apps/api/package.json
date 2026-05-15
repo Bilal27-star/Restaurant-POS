@@ -10,8 +10,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@pos/contracts": "workspace:*",
-    "@pos/database": "workspace:*",
+    "@pos/contracts": "file:../../packages/contracts",
+    "@pos/database": "file:../../packages/database",
     "@prisma/client": "^6.0.0",
     "bcrypt": "^5.1.1",
     "cookie-parser": "^1.4.7",
@@ -29,7 +29,7 @@
     "zod": "^3.24.1"
   },
   "devDependencies": {
-    "@pos/tsconfig": "workspace:*",
+    "@pos/tsconfig": "file:../../packages/config/typescript",
     "@types/bcrypt": "^5.0.2",
     "@types/cookie-parser": "^1.4.8",
     "@types/cors": "^2.8.17",

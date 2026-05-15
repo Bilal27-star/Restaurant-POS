@@ -25,10 +25,10 @@ importers:
   apps/api:
     dependencies:
       '@pos/contracts':
-        specifier: workspace:*
+        specifier: file:../../packages/contracts
         version: link:../../packages/contracts
       '@pos/database':
-        specifier: workspace:*
+        specifier: file:../../packages/database
         version: link:../../packages/database
       '@prisma/client':
         specifier: ^6.0.0
@@ -77,7 +77,7 @@ importers:
         version: 3.25.76
     devDependencies:
       '@pos/tsconfig':
-        specifier: workspace:*
+        specifier: file:../../packages/config/typescript
         version: link:../../packages/config/typescript
       '@types/bcrypt':
         specifier: ^5.0.2
