@@ -470,17 +470,47 @@ function writeBundledApi() {
     "postgresql://postgres:postgres@127.0.0.1:5432/pos_bundle_placeholder?schema=public";
 
   console.log("package-bundled-backend: npm install --omit=dev in bundled-api…");
-  execFileSync("npm", ["install", "--omit=dev", "--no-audit", "--no-fund", "--loglevel=error"], {
-    cwd: bundledApi,
-    stdio: "inherit",
-    env: {
-      ...process.env,
-      npm_config_engine_strict: "false",
-      /** Request non-linked installs when supported (we still materialize `@pos/*` below). */
-      npm_config_install_links: "false",
-      DATABASE_URL: bundleDatabaseUrl,
-    },
-  });
+
+  const npmExec = process.env.npm_execpath;
+  if (npmExec && fs.existsSync(npmExec)) {
+    execFileSync(process.execPath, [
+      npmExec,
+      "install",
+      "--omit=dev",
+      "--no-audit",
+      "--no-fund",
+      "--loglevel=error",
+    ], {
+      cwd: bundledApi,
+      stdio: "inherit",
+      env: {
+        ...process.env,
+        npm_config_engine_strict: "false",
+        npm_config_install_links: "false",
+        DATABASE_URL: bundleDatabaseUrl,
+      },
+    });
+  } else {
+    const npmBin = process.platform === "win32" ? "npm.cmd" : "npm";
+
+    execFileSync(npmBin, [
+      "install",
+      "--omit=dev",
+      "--no-audit",
+      "--no-fund",
+      "--loglevel=error",
+    ], {
+      cwd: bundledApi,
+      stdio: "inherit",
+      shell: process.platform === "win32",
+      env: {
+        ...process.env,
+        npm_config_engine_strict: "false",
+        npm_config_install_links: "false",
+        DATABASE_URL: bundleDatabaseUrl,
+      },
+    });
+  }
 
   assertBundledApiNoWorkspaceProtocol(bundledApi);
 
