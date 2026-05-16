@@ -472,7 +472,9 @@ function writeBundledApi() {
   console.log("package-bundled-backend: npm install --omit=dev in bundled-api…");
 
   const npmExec = process.env.npm_execpath;
-  if (npmExec && fs.existsSync(npmExec)) {
+  const isPnpmExec = npmExec?.toLowerCase().includes("pnpm");
+
+  if (npmExec && fs.existsSync(npmExec) && !isPnpmExec) {
     execFileSync(process.execPath, [
       npmExec,
       "install",
