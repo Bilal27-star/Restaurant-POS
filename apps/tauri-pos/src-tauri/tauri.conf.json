@@ -6,8 +6,10 @@
   "build": {
     "frontendDist": "../../web/dist",
     "devUrl": "http://localhost:5173",
-    "beforeDevCommand": "node scripts/ensure-bundled-backend-dev.mjs && pnpm --filter @pos/web dev",
-    "beforeBuildCommand": "node src-tauri/scripts/validate-tauri-config.mjs && pnpm --filter @pos/api run build && node ../../scripts/package-bundled-backend.mjs && pnpm --filter @pos/web build"  "app": {
+    "beforeDevCommand": "node ../../scripts/ensure-bundled-backend-dev.mjs && pnpm --filter @pos/web dev",
+    "beforeBuildCommand": "node src-tauri/scripts/validate-tauri-config.mjs && pnpm --filter @pos/api run build && node ../../scripts/package-bundled-backend.mjs && pnpm --filter @pos/web build"
+  },
+  "app": {
     "windows": [
       {
         "label": "main",
