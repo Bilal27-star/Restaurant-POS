@@ -36,9 +36,24 @@ const NODE_VER = process.env.DESKTOP_NODE_VERSION ?? "20.18.1";
 const skipApiBuild = process.argv.includes("--skip-api-build");
 
 function runPnpm(args, options = {}) {
+  const pnpmExec = process.env.npm_execpath;
+
+  // Prefer the package manager already running the workflow.
+  // GitHub Actions + Corepack on Windows may fail with pnpm.cmd spawnSync.
+  if (pnpmExec && fs.existsSync(pnpmExec)) {
+    return execFileSync(process.execPath, [pnpmExec, ...args], {
+      stdio: "inherit",
+      cwd: root,
+      ...options,
+    });
+  }
+
   const pnpmBin = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
+
   return execFileSync(pnpmBin, args, {
     stdio: "inherit",
+    cwd: root,
+    shell: process.platform === "win32",
     ...options,
   });
 }
