@@ -539,7 +539,7 @@ function writeBundledApi() {
         ...process.env,
         DATABASE_URL: bundleDatabaseUrl,
         PRISMA_GENERATE_SKIP_AUTOINSTALL: "true",
-        PRISMA_CLI_BINARY_TARGETS: "native,windows,darwin,darwin-arm64",
+        PRISMA_CLI_BINARY_TARGETS: "windows-x64,darwin,darwin-arm64",
         PRISMA_CLI_QUERY_ENGINE_TYPE: "binary",
       },
     },
