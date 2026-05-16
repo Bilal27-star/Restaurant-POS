@@ -32,7 +32,16 @@ const nodeBinDir = path.join(resources, "node-runtime", "bin");
 
 const NODE_VER = process.env.DESKTOP_NODE_VERSION ?? "20.18.1";
 
+
 const skipApiBuild = process.argv.includes("--skip-api-build");
+
+function runPnpm(args, options = {}) {
+  const pnpmBin = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
+  return execFileSync(pnpmBin, args, {
+    stdio: "inherit",
+    ...options,
+  });
+}
 
 function validateTauriConfigOrExit() {
   const p = path.join(root, "apps/tauri-pos/src-tauri/tauri.conf.json");
@@ -373,9 +382,8 @@ function ensureApiBuilt() {
     console.log("package-bundled-backend: --skip-api-build set, skipping API tsc");
     return;
   }
-  execFileSync("pnpm", ["--filter", "@pos/api", "run", "build"], {
+  runPnpm(["--filter", "@pos/api", "run", "build"], {
     cwd: root,
-    stdio: "inherit",
   });
 }
 
@@ -560,7 +568,7 @@ async function downloadEmbeddedNode() {
   fs.writeFileSync(archivePath, Buffer.from(await res.arrayBuffer()));
 
   if (isWin) {
-    execFileSync("tar", ["-xf", archivePath, "-C", tmp], { stdio: "inherit" });
+  execFileSync("tar", ["-xf", archivePath, "-C", tmp], { stdio: "inherit" });
   } else {
     execFileSync("tar", ["-xzf", archivePath, "-C", tmp], { stdio: "inherit" });
   }
