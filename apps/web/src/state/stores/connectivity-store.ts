@@ -5,7 +5,7 @@ type ConnectivityState = ConnectivitySnapshot & {
   applySnapshot: (s: ConnectivitySnapshot) => void;
 };
 
-const seed: ConnectivitySnapshot = {
+const defaultConnectivitySnapshot: ConnectivitySnapshot = {
   mode: typeof navigator !== "undefined" && navigator.onLine ? "ONLINE" : "OFFLINE",
   lastOnlineAtMs: null,
   lastOfflineAtMs: null,
@@ -37,7 +37,7 @@ function pickSnapshot(x: ConnectivityState): ConnectivitySnapshot {
 }
 
 export const useConnectivityStore = create<ConnectivityState>((set) => ({
-  ...seed,
+  ...defaultConnectivitySnapshot,
   /** Merge snapshot fields so action methods are never dropped from store state. */
   applySnapshot: (s) =>
     set((prev) => {

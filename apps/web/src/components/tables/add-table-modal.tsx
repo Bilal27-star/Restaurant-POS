@@ -10,7 +10,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
-import type { FloorDef, RestaurantTable } from "./tables-demo-data";
+import type { FloorDef, RestaurantTable } from "./table-types";
 import { fr } from "@/lib/locale/fr";
 
 export type TableFormMode = "add" | "edit";

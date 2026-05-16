@@ -18,18 +18,18 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@pos/api-client": "workspace:*",
-    "@pos/contracts": "workspace:*",
-    "@pos/offline-engine": "workspace:*",
-    "@pos/realtime-client": "workspace:*",
-    "@pos/ui": "workspace:*"
+    "@pos/api-client": "file:../../api-client",
+    "@pos/contracts": "file:../../contracts",
+    "@pos/offline-engine": "file:../../offline-engine",
+    "@pos/realtime-client": "file:../../realtime-client",
+    "@pos/ui": "file:../../ui"
   },
   "peerDependencies": {
     "react": "^18.3.1 || ^19.0.0",
     "react-dom": "^18.3.1 || ^19.0.0"
   },
   "devDependencies": {
-    "@pos/tsconfig": "workspace:*",
+    "@pos/tsconfig": "file:../../config/typescript",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "typescript": "^5.7.2"

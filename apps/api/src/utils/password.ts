@@ -7,5 +7,8 @@ export async function hashPassword(plain: string, env: Env): Promise<string> {
 }
 
 export async function verifyPassword(plain: string, hash: string): Promise<boolean> {
+  if (!hash || typeof hash !== "string" || hash.length < 10) {
+    return false;
+  }
   return bcrypt.compare(plain, hash);
 }

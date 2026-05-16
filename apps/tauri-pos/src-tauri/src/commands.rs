@@ -3,7 +3,9 @@ use tauri::AppHandle;
 use tauri::Manager;
 use tauri_plugin_autostart::ManagerExt;
 
-use crate::embedded_node::{read_log_tail, EmbeddedBackend};
+use crate::desktop_log::read_log_tail;
+use crate::desktop_paths::LOCAL_API_PORT;
+use crate::embedded_node::EmbeddedBackend;
 use crate::print_dispatch;
 
 #[tauri::command]
@@ -24,7 +26,7 @@ pub fn list_usb_printer_paths() -> Result<Vec<String>, String> {
     Ok(print_dispatch::list_serial_candidates())
 }
 
-/// Stable directories for backups, exports, logs, and offline sync files (create parents as needed).
+/// Stable on-disk layout for offline POS data (see `desktop_paths` module docs in Rust).
 #[tauri::command]
 pub fn pos_desktop_paths(app: AppHandle) -> Result<serde_json::Value, String> {
     let app_data = app.path().app_data_dir().map_err(|e| e.to_string())?;
@@ -33,7 +35,21 @@ pub fn pos_desktop_paths(app: AppHandle) -> Result<serde_json::Value, String> {
     let exports = app_data.join("exports");
     let sync = app_data.join("sync");
     let spool = app_data.join("printer-spool");
-    for d in [&logs, &backups, &exports, &sync, &spool] {
+    let runtime = app_data.join("runtime");
+    let cache = runtime.join("cache");
+    let temp = runtime.join("temp");
+    let offline = app_data.join("offline");
+    let offline_queue = offline.join("outbox");
+    for d in [
+        &logs,
+        &backups,
+        &exports,
+        &sync,
+        &spool,
+        &cache,
+        &temp,
+        &offline_queue,
+    ] {
         std::fs::create_dir_all(d).map_err(|e| format!("{}: {e}", d.display()))?;
     }
     Ok(json!({
@@ -43,6 +59,11 @@ pub fn pos_desktop_paths(app: AppHandle) -> Result<serde_json::Value, String> {
         "exportsDir": exports.to_string_lossy(),
         "syncDir": sync.to_string_lossy(),
         "printerSpoolDir": spool.to_string_lossy(),
+        "runtimeDir": runtime.to_string_lossy(),
+        "cacheDir": cache.to_string_lossy(),
+        "tempDir": temp.to_string_lossy(),
+        "offlineDir": offline.to_string_lossy(),
+        "offlineOutboxDir": offline_queue.to_string_lossy(),
     }))
 }
 
@@ -57,6 +78,8 @@ pub fn pos_backend_status(app: AppHandle) -> Result<serde_json::Value, String> {
         return Ok(json!({
             "managed": false,
             "running": false,
+            "ready": false,
+            "apiPort": LOCAL_API_PORT,
             "pid": serde_json::Value::Null,
             "logTail": log_tail,
             "stderrTail": "",
@@ -66,6 +89,8 @@ pub fn pos_backend_status(app: AppHandle) -> Result<serde_json::Value, String> {
     Ok(json!({
         "managed": true,
         "running": st.is_running(),
+        "ready": st.is_ready(),
+        "apiPort": LOCAL_API_PORT,
         "pid": st.child_pid(),
         "logTail": log_tail,
         "stderrTail": st.stderr_tail_joined(),

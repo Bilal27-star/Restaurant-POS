@@ -2,8 +2,6 @@ import { create } from "zustand";
 import { initialsFromDisplayName } from "@/lib/user-initials";
 import { expenseCategoryLabel } from "./caisse-expense-categories";
 import type { CaisseEmployee, Expense, ExpensePaymentMethod, FinancialTransaction, FinancialTransactionKind, Shift } from "./caisse-financial-types";
-import { CAISSE_DEMO_EMPLOYEES } from "./caisse-demo-employees";
-
 function newId() {
   return typeof crypto !== "undefined" && crypto.randomUUID
     ? crypto.randomUUID()
@@ -27,11 +25,16 @@ function employmentToEmployeeStatus(
   return "active";
 }
 
-/** Minimal payload persisted to demo employees list (full form lives in UI only). */
+/** Minimal payload for the local employees panel (full form lives in UI only). */
 export interface AddCaisseEmployeeInput {
   fullName: string;
   role: string;
   employmentStatus: "active" | "suspended" | "vacation";
+  username?: string;
+  phone?: string;
+  email?: string;
+  /** Required for create; optional on update (set to change password). */
+  password?: string;
 }
 
 function paymentMethodSnippet(method?: ExpensePaymentMethod): string {
@@ -132,7 +135,7 @@ export const useCaisseStore = create<CaisseState>((set) => ({
   lastClosedShift: null,
   expenses: [],
   transactions: [],
-  employees: CAISSE_DEMO_EMPLOYEES,
+  employees: [],
 
   openShift: ({ cashierName, openingCashDa }) => {
     const name = cashierName.trim();
@@ -327,8 +330,8 @@ export const useCaisseStore = create<CaisseState>((set) => ({
         status: employmentToEmployeeStatus(employmentStatus),
         avatarInitials: initialsFromDisplayName(name),
         avatarGradient,
-        contributionWeight: Math.min(0.22, 0.06 + (s.employees.length % 5) * 0.02),
-        performanceScore: 72 + (hash % 24),
+        contributionWeight: 0,
+        performanceScore: 0,
       };
       return { employees: [...s.employees, emp] };
     });

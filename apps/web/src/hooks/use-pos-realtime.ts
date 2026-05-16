@@ -3,6 +3,7 @@ import { useEffect, useRef } from "react";
 import { io, type Socket } from "socket.io-client";
 
 import { useAuth } from "@/auth/auth-context";
+import { logDataFlow } from "@/lib/desktop/data-flow-log";
 import { getAccessToken, resolvedApiOrigin } from "@/lib/app-api";
 import { queryKeys } from "@/lib/query-keys";
 
@@ -119,6 +120,7 @@ export function usePosRealtime() {
     socket.on("shift:updated", onShiftUpdated);
 
     socket.on("connect", () => {
+      logDataFlow("socket_connect", { url });
       burstFlagsRef.current.orders = true;
       burstFlagsRef.current.tables = true;
       burstFlagsRef.current.shifts = true;
@@ -139,6 +141,10 @@ export function usePosRealtime() {
         if (d === "shifts") burstFlagsRef.current.shifts = true;
       }
       scheduleBurstFlush();
+    });
+
+    socket.on("connect_error", (err: Error) => {
+      logDataFlow("socket_connect_error", { url, message: err.message });
     });
 
     return () => {

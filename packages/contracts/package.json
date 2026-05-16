@@ -14,7 +14,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "devDependencies": {
-    "@pos/tsconfig": "workspace:*",
+    "@pos/tsconfig": "file:../config/typescript",
     "typescript": "^5.7.2"
   }
 }

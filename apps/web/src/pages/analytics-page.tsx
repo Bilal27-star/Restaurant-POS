@@ -10,6 +10,9 @@ import {
   useAnalyticsRevenueQuery,
   useAnalyticsTablesQuery,
 } from "@/hooks/use-analytics-queries";
+import { PageQueryState } from "@/components/data/page-query-state";
+import { PageShell } from "@/components/data/page-shell";
+import { usePageRouteDiagnostics } from "@/hooks/use-page-route-diagnostics";
 import { fr } from "@/lib/locale/fr";
 import { cn } from "@/lib/utils";
 import type { AnalyticsOverviewDto, AnalyticsTablesDto } from "@/types/analytics-dto";
@@ -66,11 +69,18 @@ function toCategoryProgressRows(overview: AnalyticsOverviewDto | undefined): Cat
 }
 
 export function AnalyticsPage() {
+  usePageRouteDiagnostics("analytics");
   const [period, setPeriod] = useState<"today" | "week" | "month" | "custom">("week");
 
-  const { data: overview, isLoading: isOverviewLoading } = useAnalyticsOverviewQuery(period);
-  const { data: revenueData } = useAnalyticsRevenueQuery(period, period === "today" ? "hour" : "day");
-  const { data: tableMetrics } = useAnalyticsTablesQuery(period);
+  const overviewQuery = useAnalyticsOverviewQuery(period);
+  const revenueQuery = useAnalyticsRevenueQuery(period, period === "today" ? "hour" : "day");
+  const tablesQuery = useAnalyticsTablesQuery(period);
+  const { data: overview, isLoading: isOverviewLoading } = overviewQuery;
+  const { data: revenueData } = revenueQuery;
+  const { data: tableMetrics } = tablesQuery;
+  const anyError = overviewQuery.isError || revenueQuery.isError || tablesQuery.isError;
+  const anyLoading = overviewQuery.isLoading && !overview;
+  const loadError = overviewQuery.error ?? revenueQuery.error ?? tablesQuery.error;
 
   const formattedWeeklyRevenue = useMemo(() => {
     if (!revenueData?.points?.length) return [];
@@ -111,6 +121,18 @@ export function AnalyticsPage() {
   }, [overview]);
 
   return (
+    <PageShell>
+    <PageQueryState
+      label="les analyses"
+      isLoading={anyLoading}
+      isError={anyError}
+      error={loadError}
+      onRetry={() => {
+        void overviewQuery.refetch();
+        void revenueQuery.refetch();
+        void tablesQuery.refetch();
+      }}
+    >
     <div className="space-y-8 md:space-y-10">
       <header className="flex flex-col gap-4 border-b border-white/[0.08] pb-6 lg:flex-row lg:items-end lg:justify-between">
         <div className="min-w-0 space-y-2">
@@ -237,6 +259,8 @@ export function AnalyticsPage() {
         </div>
       </section>
     </div>
+    </PageQueryState>
+    </PageShell>
   );
 }
 

@@ -6,7 +6,7 @@ export const defaultSystemSettingsJson = {
   v: 1 as const,
   receipt: {
     headerLines: ["Merci de votre visite"],
-    footerLines: ["www.demo-restaurant.local"],
+    footerLines: [] as string[],
     showTaxBreakdown: true,
   },
   printers: {

@@ -4,17 +4,18 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useShallow } from "zustand/react/shallow";
 
+import { PageQueryState } from "@/components/data/page-query-state";
 import { useAuth } from "@/auth/auth-context";
 import type { TakeawayCustomer } from "@/components/takeaway/takeaway-customer-types";
 import type { TakeawayCustomerDraft, TakeawayCustomerFieldErrorKey } from "@/components/takeaway/takeaway-customer-validation";
 import { validateTakeawayCustomerDraft } from "@/components/takeaway/takeaway-customer-validation";
 import { cartLinesToTakeawayItems, buildTakeawayKitchenNotes } from "@/components/takeaway/takeaway-pos-bridge";
 import { formatAlgeriaPhoneDisplay, phoneKey } from "@/components/takeaway/takeaway-phone-utils";
-import { useTakeawayQueueStore } from "@/components/takeaway/takeaway-queue-store";
-import { usePosMenuCategoriesQuery, usePosMenuItemsQuery } from "@/hooks/use-pos-menu-queries";
+import { usePosMenuQuery } from "@/hooks/use-pos-menu-queries";
 import { usePosTableOrderBootstrap } from "@/hooks/use-pos-table-order-bootstrap";
 import { getAppApi } from "@/lib/app-api";
-import { menuItemToModalData, menuItemToProductCard, parseMenuCategories, parseMenuItems, type MenuItemApiRow } from "@/lib/pos-menu-api";
+import { menuItemToModalData, menuItemToProductCard, type MenuItemApiRow } from "@/lib/pos-menu-api";
+import { fr } from "@/lib/locale/fr";
 import { queryKeys } from "@/lib/query-keys";
 import { useOfflineRuntime } from "@/offline/offline-runtime-context";
 import { useConnectivityStore } from "@/state/stores/connectivity-store";
@@ -47,18 +48,17 @@ export interface PosWorkspaceProps {
 }
 
 export function PosWorkspace({ className, initialTableId = null }: PosWorkspaceProps) {
-  const { user, accessToken } = useAuth();
+  const { user } = useAuth();
   const qc = useQueryClient();
-  const enabled = Boolean(accessToken);
   const offline = useOfflineRuntime();
   const effectiveOffline = useConnectivityStore((s) => s.mode === "OFFLINE" || !s.browserReportsOnline);
 
-  const categoriesQuery = usePosMenuCategoriesQuery(enabled);
-  const itemsQuery = usePosMenuItemsQuery(enabled);
-  const bootstrap = usePosTableOrderBootstrap(initialTableId, enabled);
+  const menuQuery = usePosMenuQuery();
+  const bootstrap = usePosTableOrderBootstrap(initialTableId);
 
-  const categories = useMemo(() => parseMenuCategories(categoriesQuery.data), [categoriesQuery.data]);
-  const items = useMemo(() => parseMenuItems(itemsQuery.data), [itemsQuery.data]);
+  const menuData = menuQuery.data;
+  const categories = menuData?.categories ?? [];
+  const items = menuData?.items ?? [];
 
   const itemById = useMemo(() => new Map(items.map((it) => [it.id, it])), [items]);
 
@@ -125,9 +125,6 @@ export function PosWorkspace({ className, initialTableId = null }: PosWorkspaceP
     if (orderType === "dine-in") setTakeawayFieldErrors({});
   }, [orderType]);
 
-  const savedCustomers = useTakeawayQueueStore((s) => s.savedCustomers);
-  const addOrderFromPos = useTakeawayQueueStore((s) => s.addOrderFromPos);
-
   const categoryTabs: PosCategoryTab[] = useMemo(
     () =>
       categories.map((c) => ({
@@ -154,9 +151,9 @@ export function PosWorkspace({ className, initialTableId = null }: PosWorkspaceP
     return list;
   }, [items, activeCategory?.id, search]);
 
-  const popularItems = useMemo(() => items.filter((it) => it.popular), [items]);
+  const catalogPopularRows = useMemo(() => items.filter((it) => it.popular), [items]);
 
-  const popularCards = useMemo(() => popularItems.map(menuItemToProductCard), [popularItems]);
+  const popularCards = useMemo(() => catalogPopularRows.map(menuItemToProductCard), [catalogPopularRows]);
   const gridCards = useMemo(() => filteredItems.map(menuItemToProductCard), [filteredItems]);
 
   const { data: savedMatches = [] } = useCustomerSearchQuery(customerSearch);
@@ -297,11 +294,112 @@ export function PosWorkspace({ className, initialTableId = null }: PosWorkspaceP
       return;
     }
 
-    const resolvedTableId = tableId ?? null;
-    const partySize = tableNumber.trim() ? Number.parseInt(tableNumber.trim(), 10) : 1;
+    const normalizedTableNumber = tableNumber.trim();
 
-    if (!activeOrderId && !resolvedTableId) {
-      flash("Choisissez une table (ou ouvrez le POS depuis une table).");
+    // نتأكد أن tableId UUID حقيقي وليس رقم طاولة مثل "1"
+    const isUuid = (value?: string | null) =>
+      !!value &&
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+
+    let resolvedTableId =
+      bootstrap.data?.tableLabel === normalizedTableNumber
+        ? bootstrap.data?.tableId
+        : isUuid(tableId)
+          ? tableId
+          : null;
+
+    // Resolve table UUID automatically from typed table number
+    if (!resolvedTableId && normalizedTableNumber) {
+      try {
+        const layout: any = await getAppApi().tables.getLayout();
+
+        console.log("RAW LAYOUT:", layout);
+
+        const findTablesRecursively = (obj: any): any[] => {
+          if (!obj) return [];
+
+          if (Array.isArray(obj)) {
+            return obj.flatMap(findTablesRecursively);
+          }
+
+          if (typeof obj === "object") {
+            if (
+              Array.isArray(obj.tables) &&
+              obj.tables.some((t: any) => t?.id)
+            ) {
+              return obj.tables;
+            }
+
+            return Object.values(obj).flatMap(findTablesRecursively);
+          }
+
+          return [];
+        };
+
+        const tables = findTablesRecursively(layout);
+
+        console.log("ALL TABLES FOUND:", tables);
+
+        const normalize = (v: any) =>
+          String(v ?? "")
+            .toLowerCase()
+            .replace(/^table\s*/i, "")
+            .replace(/[^a-z0-9]/g, "")
+            .trim();
+
+        const wanted = normalize(normalizedTableNumber);
+        const wantedNumber = Number.parseInt(wanted, 10);
+
+        const matchedTable = tables.find((t: any) => {
+          const values = [
+            t.label,
+            t.number,
+            t.name,
+            t.tableNumber,
+            t.code,
+            t.id,
+          ].filter(Boolean);
+
+          return values.some((value: any) => {
+            const current = normalize(value);
+
+            if (current === wanted) return true;
+
+            const currentNumber = Number.parseInt(current, 10);
+
+            return (
+              !Number.isNaN(wantedNumber) &&
+              !Number.isNaN(currentNumber) &&
+              currentNumber === wantedNumber
+            );
+          });
+        });
+
+        console.log("MATCHED TABLE:", matchedTable);
+
+        if (matchedTable?.id && isUuid(matchedTable.id)) {
+          resolvedTableId = matchedTable.id;
+        }
+
+        if (!resolvedTableId) {
+          console.error("TABLE LOOKUP FAILED", {
+            typedTable: normalizedTableNumber,
+            bootstrap: bootstrap.data,
+            storeTableId: tableId,
+            allTables: tables,
+          });
+        }
+      } catch (e) {
+        console.error("TABLE RESOLUTION ERROR:", e);
+        console.error("TABLE API RAW FAILURE", e);
+      }
+    }
+
+    const partySize = 1;
+    const resolvedTableKey = resolvedTableId || normalizedTableNumber;
+
+    if (!activeOrderId && !normalizedTableNumber) {
+      flash("Entrez un numéro de table.");
       return;
     }
 
@@ -360,18 +458,22 @@ export function PosWorkspace({ className, initialTableId = null }: PosWorkspaceP
     }
 
     if (!resolvedTableId) {
-      flash("Choisissez une table (ou ouvrez le POS depuis une table).");
+      console.error("TABLE LOOKUP FAILED", {
+        typedTable: normalizedTableNumber,
+        bootstrap: bootstrap.data,
+        storeTableId: tableId,
+      });
+
+      flash(`Table ${normalizedTableNumber} introuvable. Vérifiez Console.`);
       return;
     }
 
-    const body = {
-      type: "DINE_IN" as const,
-      tableId: resolvedTableId,
-      waiterId: user?.id ?? null,
-      partySize: Number.isFinite(partySize) && partySize > 0 ? partySize : 1,
-      kitchenNotes: null,
-      customerNotes: null,
+    const body: any = {
+      type: "DINE_IN",
+      partySize,
       lines: apiLines,
+      ...(user?.id ? { waiterId: user.id } : {}),
+      ...(resolvedTableId ? { tableId: resolvedTableId } : {}),
     };
 
     if (!online && user?.restaurantId) {
@@ -409,17 +511,53 @@ export function PosWorkspace({ className, initialTableId = null }: PosWorkspaceP
         if (resolvedTableId) await qc.invalidateQueries({ queryKey: queryKeys.pos.tableBootstrap(resolvedTableId) });
         flash("Commande créée et envoyée en cuisine.");
         setCartOpen(false);
-      } catch {
-        flash("Impossible d’envoyer la commande.");
+      } catch (err: any) {
+        console.error("FULL ORDER ERROR:", err);
+        console.log("REQUEST BODY:", body);
+
+        const details =
+          err?.details ||
+          err?.response?.data?.details ||
+          err?.response?.data?.errors ||
+          err?.response?.data ||
+          err;
+
+        flash(
+          JSON.stringify(details, null, 2).slice(0, 250)
+        );
       }
     });
   };
 
-  const loadingMenu = categoriesQuery.isLoading || itemsQuery.isLoading;
-  const menuError = categoriesQuery.isError || itemsQuery.isError;
+  const hasMenuData = categories.length > 0 || items.length > 0;
+  const menuLoading = menuQuery.isPending && !hasMenuData;
+  const menuError = menuQuery.isError && !hasMenuData;
+  const menuErr = menuQuery.error;
+  const showDegradedBanner = menuQuery.isError && hasMenuData;
 
   return (
-    <div className={cn("relative flex min-h-0 flex-1 flex-col overflow-hidden bg-transparent", className)}>
+    <PageQueryState
+      label="le menu"
+      isLoading={menuLoading}
+      isError={menuError}
+      error={menuErr}
+      isEmpty={false}
+      onRetry={() => void menuQuery.refetch()}
+      className={cn("relative flex min-h-0 flex-1 flex-col overflow-hidden bg-transparent", className)}
+      showLoadingOverlay={menuQuery.isFetching && hasMenuData}
+    >
+    <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
+      {showDegradedBanner ? (
+        <div
+          className="mb-2 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-amber-500/35 bg-amber-950/25 px-3 py-2 text-xs text-amber-100"
+          role="status"
+        >
+          <span>{fr.dashboard.dashboardLoadError}</span>
+          <Button type="button" variant="outline" size="sm" className="h-8 rounded-lg" onClick={() => void menuQuery.refetch()}>
+            {fr.dashboard.retry}
+          </Button>
+        </div>
+      ) : null}
       {toast ? (
         <div
           className="fixed bottom-6 left-1/2 z-[100] max-w-md -translate-x-1/2 rounded-xl border border-pos-border-subtle bg-pos-depth/95 px-4 py-3 text-center text-sm font-semibold text-foreground shadow-surface-lg"
@@ -432,14 +570,7 @@ export function PosWorkspace({ className, initialTableId = null }: PosWorkspaceP
       <div className="relative z-[1] flex min-h-0 flex-1 flex-col">
         <PosSearchBar value={search} onChange={setSearch} filterActiveCount={search.trim() ? 1 : 0} />
 
-        {menuError ? (
-          <div className="border-b border-red-500/30 bg-red-950/30 px-4 py-2 text-sm text-red-100">Impossible de charger le menu.</div>
-        ) : null}
-
-        {loadingMenu && items.length === 0 ? (
-          <div className="flex flex-1 items-center justify-center p-8 text-sm text-muted-foreground">Chargement du menu…</div>
-        ) : (
-          <div className="flex min-h-0 flex-1 flex-col xl:flex-row">
+        <div className="flex min-h-0 flex-1 flex-col xl:flex-row">
             <PosCategoryRail
               categories={categoryTabs}
               activeId={activeCategoryId}
@@ -472,8 +603,9 @@ export function PosWorkspace({ className, initialTableId = null }: PosWorkspaceP
               onTableNumberChange={setTableNumber}
               dineInTableLockedLabel={dineInLockedLabel}
               sendDisabled={
-                orderType === "dine-in" &&
-                ((Boolean(activeOrderId) && !lines.some((l) => l.isDraftLine)) || (!activeOrderId && !tableId))
+                lines.length === 0 ||
+                (orderType === "dine-in" && !activeOrderId && !tableId && !tableNumber.trim()) ||
+                (orderType === "dine-in" && Boolean(activeOrderId) && !lines.some((l) => l.isDraftLine))
               }
               sendLoading={kitchenSending}
               takeawayCustomer={{
@@ -487,8 +619,7 @@ export function PosWorkspace({ className, initialTableId = null }: PosWorkspaceP
               }}
               onSendToKitchen={() => void handleSendToKitchen()}
             />
-          </div>
-        )}
+        </div>
       </div>
 
       <div className="relative z-[1] shrink-0 overflow-hidden border-t border-border bg-card/95 p-3 shadow-surface-sm backdrop-blur-md xl:hidden">
@@ -525,8 +656,9 @@ export function PosWorkspace({ className, initialTableId = null }: PosWorkspaceP
             onTableNumberChange={setTableNumber}
             dineInTableLockedLabel={dineInLockedLabel}
             sendDisabled={
-              orderType === "dine-in" &&
-              ((Boolean(activeOrderId) && !lines.some((l) => l.isDraftLine)) || (!activeOrderId && !tableId))
+              lines.length === 0 ||
+              (orderType === "dine-in" && !activeOrderId && !tableId && !tableNumber.trim()) ||
+              (orderType === "dine-in" && Boolean(activeOrderId) && !lines.some((l) => l.isDraftLine))
             }
             sendLoading={kitchenSending}
             takeawayCustomer={{
@@ -562,5 +694,6 @@ export function PosWorkspace({ className, initialTableId = null }: PosWorkspaceP
         }}
       />
     </div>
+    </PageQueryState>
   );
 }

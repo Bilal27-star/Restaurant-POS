@@ -40,4 +40,7 @@ export const queryKeys = {
   users: {
     list: () => ["users", "list"] as const,
   },
+  navigation: {
+    counts: () => ["navigation", "counts"] as const,
+  },
 };

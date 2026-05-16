@@ -1,6 +1,6 @@
-import { ApiError } from "../../core/http/ApiError.js";
 import type { TableStatus } from "@prisma/client";
 
+import { ApiError } from "../../core/http/ApiError.js";
 import { getRealtimeHub } from "../../realtime/registry.js";
 
 import {
@@ -118,7 +118,8 @@ export class TablesService {
   }
 
   async createFloor(restaurantId: string, name: string, sortOrder: number) {
-    await this.repo.createFloor(restaurantId, name.trim(), sortOrder);
+    const floor = await this.repo.createFloor(restaurantId, name.trim(), sortOrder);
+    console.info("[ROOM CREATED]", { restaurantId, floorId: floor.id, name: floor.name });
     const layout = await this.repo.listFloorsWithTables(restaurantId);
     getRealtimeHub()?.publishStaffDataChanged(restaurantId, { domains: ["tables"] });
     return layout;
@@ -143,11 +144,17 @@ export class TablesService {
 
   async createTable(restaurantId: string, input: { floorId: string | null; number: string; capacity: number }) {
     try {
-      await this.repo.createTable({
+      const table = await this.repo.createTable({
         restaurantId,
         floorId: input.floorId,
         number: input.number.trim(),
         capacity: input.capacity,
+      });
+      console.info("[TABLE CREATED]", {
+        restaurantId,
+        tableId: table.id,
+        floorId: input.floorId,
+        number: input.number.trim(),
       });
     } catch (e) {
       if (e instanceof Error && e.message.includes("Unique constraint")) {

@@ -48,7 +48,12 @@ export class MenuController {
   patchCategory = asyncHandler(async (req: Request, res: Response) => {
     const rid = req.auth!.restaurantId;
     const { categoryId } = req.params as { categoryId: string };
-    const body = req.body as { name?: string; sortOrder?: number };
+    const body = req.body as {
+      name?: string;
+      sortOrder?: number;
+      colorToken?: string | null;
+      iconKey?: string | null;
+    };
     const data = await this.service.patchCategory(rid, categoryId, body);
     auditFromRequest(req, {
       action: "menu.category.patch",

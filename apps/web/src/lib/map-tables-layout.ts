@@ -1,4 +1,4 @@
-import type { FloorDef, OrderLineItem, RestaurantTable, TableOrder, TableStatus } from "@/components/tables/tables-demo-data";
+import type { FloorDef, OrderLineItem, RestaurantTable, TableOrder, TableStatus } from "@/components/tables/table-types";
 
 function mapTableStatus(api: string): TableStatus {
   switch (api) {

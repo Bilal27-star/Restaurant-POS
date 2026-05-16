@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import type { Request, Response } from "express";
 
+import { isAuthThrottleDisabled } from "../../config/desktop-runtime.js";
 import type { Env } from "../../config/env.js";
 import { ApiError } from "../../core/http/ApiError.js";
 import { JwtTokenService } from "../../core/auth/jwt.service.js";
@@ -55,12 +56,6 @@ export class AuthService {
   }
 
   private async handleFailedLogin(user: UserWithAuthRelations, restaurantId: string, meta: AuthRequestMeta) {
-    const next = user.failedLoginCount + 1;
-    let lockedUntil: Date | null = user.lockedUntil;
-    if (next >= this.env.AUTH_MAX_FAILED_LOGINS) {
-      lockedUntil = new Date(Date.now() + this.env.AUTH_LOCKOUT_MINUTES * 60_000);
-    }
-    await this.repo.updateUserLockState(user.id, { failedLoginCount: next, lockedUntil });
     await this.audit({
       restaurantId,
       userId: user.id,
@@ -69,6 +64,15 @@ export class AuthService {
       failureReason: "INVALID_CREDENTIALS",
       meta,
     });
+    if (isAuthThrottleDisabled(this.env)) return;
+
+    const next = user.failedLoginCount + 1;
+    let lockedUntil: Date | null = user.lockedUntil;
+    if (next >= this.env.AUTH_MAX_FAILED_LOGINS) {
+      const lockMs = this.env.AUTH_LOCKOUT_MINUTES * 60_000;
+      lockedUntil = lockMs > 0 ? new Date(Date.now() + lockMs) : null;
+    }
+    await this.repo.updateUserLockState(user.id, { failedLoginCount: next, lockedUntil });
     if (next >= this.env.AUTH_MAX_FAILED_LOGINS) {
       await this.audit({
         restaurantId,
@@ -85,6 +89,11 @@ export class AuthService {
   async login(body: LoginBody, meta: AuthRequestMeta, res: Response) {
     const restaurant = await this.repo.findRestaurantBySlug(body.restaurantSlug);
     if (!restaurant) {
+      console.info("[LOGIN FAILED]", {
+        reason: "UNKNOWN_TENANT",
+        restaurantSlug: body.restaurantSlug,
+        username: body.username,
+      });
       throw ApiError.unauthorized("Invalid credentials");
     }
 
@@ -98,19 +107,34 @@ export class AuthService {
         failureReason: "UNKNOWN_USER",
         meta,
       });
+      console.info("[LOGIN FAILED]", {
+        restaurantId: restaurant.id,
+        username: body.username,
+        reason: "UNKNOWN_USER",
+      });
       throw ApiError.unauthorized("Invalid credentials");
     }
 
     if (user.lockedUntil && user.lockedUntil > new Date()) {
-      await this.audit({
-        restaurantId: restaurant.id,
-        userId: user.id,
-        username: user.username,
-        success: false,
-        failureReason: "ACCOUNT_LOCKED",
-        meta,
-      });
-      throw ApiError.forbidden("Account temporarily locked. Try again later.");
+      if (isAuthThrottleDisabled(this.env)) {
+        await this.repo.updateUserLockState(user.id, { failedLoginCount: 0, lockedUntil: null });
+      } else {
+        await this.audit({
+          restaurantId: restaurant.id,
+          userId: user.id,
+          username: user.username,
+          success: false,
+          failureReason: "ACCOUNT_LOCKED",
+          meta,
+        });
+        console.info("[LOGIN FAILED]", {
+          restaurantId: restaurant.id,
+          userId: user.id,
+          username: user.username,
+          reason: "ACCOUNT_LOCKED",
+        });
+        throw ApiError.forbidden("Account temporarily locked. Try again later.");
+      }
     }
 
     if (!isLoginAllowedStatus(user.status)) {
@@ -121,6 +145,12 @@ export class AuthService {
         success: false,
         failureReason: `STATUS_${user.status}`,
         meta,
+      });
+      console.info("[LOGIN FAILED]", {
+        restaurantId: restaurant.id,
+        userId: user.id,
+        username: user.username,
+        reason: `STATUS_${user.status}`,
       });
       throw ApiError.forbidden("Account cannot sign in with the current status.");
     }
@@ -133,6 +163,12 @@ export class AuthService {
     }
 
     if (!valid) {
+      console.info("[LOGIN FAILED]", {
+        restaurantId: restaurant.id,
+        userId: user.id,
+        username: user.username,
+        reason: "INVALID_CREDENTIALS",
+      });
       await this.handleFailedLogin(user, restaurant.id, meta);
       throw ApiError.unauthorized("Invalid credentials");
     }
@@ -146,6 +182,11 @@ export class AuthService {
       meta,
     });
 
+    console.info("[LOGIN SUCCESS]", {
+      restaurantId: restaurant.id,
+      userId: user.id,
+      username: user.username,
+    });
     return this.mintSessionAndTokens(user, meta, res);
   }
 

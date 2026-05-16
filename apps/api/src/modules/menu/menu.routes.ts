@@ -1,5 +1,4 @@
 import { Router } from "express";
-import rateLimit from "express-rate-limit";
 
 import type { Env } from "../../config/env.js";
 import { PermissionCodes } from "../../core/auth/permission-codes.js";

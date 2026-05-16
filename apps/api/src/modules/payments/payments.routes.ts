@@ -1,7 +1,7 @@
 import { Router } from "express";
-import rateLimit from "express-rate-limit";
 
 import type { Env } from "../../config/env.js";
+import { createScopedRateLimiter } from "../../middleware/rateLimit.js";
 import { PermissionCodes } from "../../core/auth/permission-codes.js";
 import {
   createRequireActiveSession,
@@ -31,12 +31,10 @@ export function createPaymentsRouter(env: Env): Router {
   const requirePayments = createRequirePermission(PermissionCodes.PAYMENTS_PROCESS);
   const requireRefund = createRequirePermission(PermissionCodes.PAYMENTS_REFUND);
   const requireActiveSession = createRequireActiveSession();
-  const refundLimiter = rateLimit({
+  const refundLimiter = createScopedRateLimiter(env, undefined, {
     windowMs: 60 * 60 * 1000,
     limit: 40,
-    standardHeaders: true,
-    legacyHeaders: false,
-    message: { success: false as const, error: "Too many refund attempts" },
+    message: "Too many refund attempts",
   });
 
   const ordersRepo = new OrdersRepository();

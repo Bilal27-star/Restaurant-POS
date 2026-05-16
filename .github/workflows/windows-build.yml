@@ -49,6 +49,9 @@ jobs:
       - name: Verify pnpm
         run: pnpm --version
 
+      - name: Validate Tauri config JSON
+        run: node apps/tauri-pos/src-tauri/scripts/validate-tauri-config.mjs
+
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
 

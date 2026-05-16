@@ -1,9 +1,10 @@
-import { Layers, Loader2, Plus, Search } from "lucide-react";
+import { Building2, Layers, Plus, Search } from "lucide-react";
 import * as React from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/auth/auth-context";
+import { AddFloorModal } from "@/components/tables/add-floor-modal";
 import { AddTableModal } from "@/components/tables/add-table-modal";
 import { DeleteTableDialog } from "@/components/tables/delete-table-dialog";
 import { TableAddItemsSheet } from "@/components/tables/table-add-items-sheet";
@@ -15,12 +16,17 @@ import {
   type RestaurantTable,
   type TableStatus,
   orderDisplayRef,
-} from "@/components/tables/tables-demo-data";
+} from "@/components/tables/table-types";
 import { printTableIdentificationTicket } from "@/lib/tickets/table-ticket-print";
+import { PageQueryState } from "@/components/data/page-query-state";
+import { PageShell } from "@/components/data/page-shell";
+import { usePageRouteDiagnostics } from "@/hooks/use-page-route-diagnostics";
 import { useTablesFloorsState } from "@/components/tables/use-tables-floors-state";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { getAppApi } from "@/lib/app-api";
+import { mapTablesLayoutPayload } from "@/lib/map-tables-layout";
+import { findTableIdInLayout, syncTablesLayoutQueryData } from "@/lib/tables-layout-cache";
 import { queryKeys } from "@/lib/query-keys";
 import { useTablesLayoutQuery } from "@/lib/use-tables-layout-query";
 import { fr } from "@/lib/locale/fr";
@@ -47,31 +53,27 @@ function floorOccupiedTotal(floor: FloorDef) {
   return `${occ}/${floor.tables.length}`;
 }
 
-function readSerializedOrderVersion(data: unknown): number | undefined {
-  if (!data || typeof data !== "object") return undefined;
-  const v = (data as Record<string, unknown>).version;
-  if (typeof v === "number" && Number.isFinite(v)) return v;
-  if (typeof v === "string") {
-    const n = Number.parseInt(v, 10);
-    return Number.isFinite(n) ? n : undefined;
-  }
-  return undefined;
-}
-
 export function TablesPage() {
-  const { user, accessToken } = useAuth();
+  usePageRouteDiagnostics("tables");
+  const { user } = useAuth();
   const navigate = useNavigate();
   const qc = useQueryClient();
-  const { data: layoutData, isFetching: layoutLoading, isError: layoutError, error: layoutErrorObj } = useTablesLayoutQuery(
-    Boolean(accessToken),
+  const layoutQuery = useTablesLayoutQuery();
+  const { floors: storeFloors, moveTable } = useTablesFloorsState();
+  const [draggingId, setDraggingId] = useState<string | null>(null);
+  const [dragOverFloorId, setDragOverFloorId] = useState<string | null>(null);
+  const [dropBeforeId, setDropBeforeId] = useState<string | null>(null);
+  const [dropAppend, setDropAppend] = useState(false);
+  const mappedFromQuery = useMemo(
+    () => (layoutQuery.data !== undefined ? mapTablesLayoutPayload(layoutQuery.data) : undefined),
+    [layoutQuery.data],
   );
-  const { floors, moveTable, hydrateFloors } = useTablesFloorsState();
-
-  useEffect(() => {
-    if (Array.isArray(layoutData)) {
-      hydrateFloors(layoutData as any[]);
-    }
-  }, [layoutData, hydrateFloors]);
+  /** During drag, Zustand holds optimistic positions; otherwise the server layout is authoritative. */
+  const floors = useMemo(() => {
+    if (draggingId && storeFloors.length > 0) return storeFloors;
+    if (layoutQuery.isSuccess && mappedFromQuery !== undefined) return mappedFromQuery;
+    return storeFloors;
+  }, [draggingId, storeFloors, layoutQuery.isSuccess, mappedFromQuery]);
   const [floorId, setFloorId] = useState("");
   useEffect(() => {
     if (!floorId && floors[0]) {
@@ -90,6 +92,7 @@ export function TablesPage() {
   );
   const [addItemsOpen, setAddItemsOpen] = useState(false);
   const [addItemsSheetKey, setAddItemsSheetKey] = useState(0);
+  const [addFloorOpen, setAddFloorOpen] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
 
   const flash = useCallback((msg: string) => {
@@ -100,13 +103,14 @@ export function TablesPage() {
   const persistTableFloor = useCallback(
     async (tableId: string, newFloorId: string) => {
       try {
-        await getAppApi().tables.patchTable(tableId, { floorId: newFloorId });
-        await qc.invalidateQueries({ queryKey: queryKeys.tables.layout() });
+        const layout = await getAppApi().tables.patchTable(tableId, { floorId: newFloorId });
+        syncTablesLayoutQueryData(qc, layout);
       } catch {
         flash("Impossible de déplacer la table (serveur).");
+        await layoutQuery.refetch();
       }
     },
-    [qc, flash],
+    [qc, flash, layoutQuery],
   );
 
   const closeTableDetails = useCallback(() => {
@@ -146,10 +150,6 @@ export function TablesPage() {
     [flash, user?.restaurantId, qc],
   );
 
-  const [draggingId, setDraggingId] = useState<string | null>(null);
-  const [dragOverFloorId, setDragOverFloorId] = useState<string | null>(null);
-  const [dropBeforeId, setDropBeforeId] = useState<string | null>(null);
-  const [dropAppend, setDropAppend] = useState(false);
   const ignoreFloorClickUntilRef = React.useRef(0);
 
   const activeFloor: FloorDef = floors.find((f) => f.id === floorId) ?? floors[0] ?? { id: "", name: "", tables: [] };
@@ -182,7 +182,7 @@ export function TablesPage() {
     setSelectedId(null);
   };
 
-  const handleDropOnFloorTab = (e: React.DragEvent, targetFloorId: string) => {
+  const handleDropOnFloorTab = async (e: React.DragEvent, targetFloorId: string) => {
     e.preventDefault();
     const p = parseTableDragPayload(e.dataTransfer);
     if (!p) return;
@@ -192,15 +192,15 @@ export function TablesPage() {
       toFloorId: targetFloorId,
       insertBeforeId: null,
     });
-    if (p.fromFloorId !== targetFloorId) {
-      void persistTableFloor(p.tableId, targetFloorId);
-    }
     setFloorId(targetFloorId);
     setSelectedId(p.tableId);
+    if (p.fromFloorId !== targetFloorId) {
+      await persistTableFloor(p.tableId, targetFloorId);
+    }
     endDragVisuals();
   };
 
-  const handleDropBeforeCard = (e: React.DragEvent, insertBeforeId: string) => {
+  const handleDropBeforeCard = async (e: React.DragEvent, insertBeforeId: string) => {
     e.preventDefault();
     const p = parseTableDragPayload(e.dataTransfer);
     if (!p) return;
@@ -214,14 +214,14 @@ export function TablesPage() {
       toFloorId: floorId,
       insertBeforeId,
     });
-    if (p.fromFloorId !== floorId) {
-      void persistTableFloor(p.tableId, floorId);
-    }
     setSelectedId(p.tableId);
+    if (p.fromFloorId !== floorId) {
+      await persistTableFloor(p.tableId, floorId);
+    }
     endDragVisuals();
   };
 
-  const handleDropAppend = (e: React.DragEvent) => {
+  const handleDropAppend = async (e: React.DragEvent) => {
     e.preventDefault();
     const p = parseTableDragPayload(e.dataTransfer);
     if (!p) return;
@@ -231,10 +231,10 @@ export function TablesPage() {
       toFloorId: floorId,
       insertBeforeId: null,
     });
-    if (p.fromFloorId !== floorId) {
-      void persistTableFloor(p.tableId, floorId);
-    }
     setSelectedId(p.tableId);
+    if (p.fromFloorId !== floorId) {
+      await persistTableFloor(p.tableId, floorId);
+    }
     endDragVisuals();
   };
 
@@ -246,21 +246,33 @@ export function TablesPage() {
 
   const deleteFloorName = deleteTarget ? floors.find((f) => f.id === deleteTarget.floorId)?.name : undefined;
 
+  const hasLayoutData = floors.length > 0;
+  const layoutLoading = layoutQuery.isPending && !hasLayoutData;
+  const layoutError = layoutQuery.isError && !hasLayoutData;
+  const showDegradedBanner = layoutQuery.isError && hasLayoutData;
+
   return (
-    <div className="relative isolate min-h-0">
-      {layoutLoading && floors.length === 0 ? (
-        <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-3 bg-background/80 backdrop-blur-sm">
-          <Loader2 className="size-8 animate-spin text-violet-400" aria-hidden />
-          <p className="text-sm font-medium text-muted-foreground">Chargement du plan de salle…</p>
-        </div>
-      ) : null}
-      {layoutError ? (
+    <PageShell fill>
+    <PageQueryState
+      label="le plan de salle"
+      isLoading={layoutLoading}
+      isError={layoutError}
+      error={layoutQuery.error}
+      isEmpty={false}
+      onRetry={() => void layoutQuery.refetch()}
+      className="relative isolate min-h-0 flex-1"
+      showLoadingOverlay={layoutQuery.isFetching && floors.length > 0}
+    >
+    <div className="relative isolate flex min-h-0 flex-1 flex-col">
+      {showDegradedBanner ? (
         <div
-          className="mb-4 rounded-xl border border-red-500/40 bg-red-950/40 px-4 py-3 text-sm text-red-100"
-          role="alert"
+          className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-500/35 bg-amber-950/25 px-4 py-3 text-sm text-amber-100"
+          role="status"
         >
-          {fr.tables.layoutError}
-          {layoutErrorObj instanceof Error ? `: ${layoutErrorObj.message}` : ""}
+          <span>Impossible de rafraîchir le plan de salle. Les données affichées peuvent être obsolètes.</span>
+          <Button type="button" variant="outline" size="sm" className="rounded-lg" onClick={() => void layoutQuery.refetch()}>
+            {fr.dashboard.retry}
+          </Button>
         </div>
       ) : null}
       {toast ? (
@@ -372,7 +384,18 @@ export function TablesPage() {
           <Button
             type="button"
             size="lg"
-            className="h-12 min-h-12 shrink-0 whitespace-nowrap rounded-xl bg-gradient-to-r from-violet-600 to-fuchsia-600 px-4 text-base font-semibold text-white shadow-[0_8px_28px_rgba(139,92,246,0.35)] touch-manipulation hover:from-violet-500 hover:to-fuchsia-500 sm:px-5"
+            variant="outline"
+            className="h-12 min-h-12 shrink-0 whitespace-nowrap rounded-xl border-white/[0.1] bg-purple-950/25 px-4 text-base font-semibold text-on-dark-title backdrop-blur-sm touch-manipulation hover:bg-purple-950/40 sm:px-5"
+            onClick={() => setAddFloorOpen(true)}
+          >
+            <Building2 className="size-[18px]" aria-hidden />
+            {fr.tables.addRoom}
+          </Button>
+          <Button
+            type="button"
+            size="lg"
+            disabled={floors.length === 0}
+            className="h-12 min-h-12 shrink-0 whitespace-nowrap rounded-xl bg-gradient-to-r from-violet-600 to-fuchsia-600 px-4 text-base font-semibold text-white shadow-[0_8px_28px_rgba(139,92,246,0.35)] touch-manipulation hover:from-violet-500 hover:to-fuchsia-500 disabled:pointer-events-none disabled:opacity-45 sm:px-5"
             onClick={() => setFormModal({ type: "add" })}
           >
             <Plus className="size-[18px]" aria-hidden />
@@ -510,6 +533,24 @@ export function TablesPage() {
         </p>
       ) : null}
 
+      <AddFloorModal
+        open={addFloorOpen}
+        onOpenChange={setAddFloorOpen}
+        onSubmit={async (name) => {
+          try {
+            const layout = await getAppApi().tables.createFloor({ name, sortOrder: floors.length });
+            syncTablesLayoutQueryData(qc, layout);
+            const mapped = mapTablesLayoutPayload(layout);
+            const last = mapped[mapped.length - 1];
+            if (last) setFloorId(last.id);
+            flash(fr.tables.toastRoomCreated);
+          } catch (err) {
+            flash(fr.tables.toastRoomError);
+            throw err;
+          }
+        }}
+      />
+
       <AddTableModal
         open={formModal !== null}
         onOpenChange={(open) => {
@@ -522,25 +563,31 @@ export function TablesPage() {
         onSubmit={async (payload) => {
           try {
             if (payload.mode === "add") {
-              await getAppApi().tables.createTable({
+              const layout = await getAppApi().tables.createTable({
                 floorId: payload.floorId,
                 number: payload.table.numberLabel,
                 capacity: payload.table.capacity ?? 4,
               });
-            } else {
-              await getAppApi().tables.patchTable(payload.table.id, {
-                number: payload.table.numberLabel,
-                capacity: payload.table.capacity ?? 4,
-                floorId: payload.floorId,
-              });
+              syncTablesLayoutQueryData(qc, layout);
+              setFloorId(payload.floorId);
+              const serverId = findTableIdInLayout(layout, payload.floorId, payload.table.numberLabel);
+              setSelectedId(serverId ?? null);
+              flash(fr.tables.toastTableSaved);
+              return;
             }
-            await qc.invalidateQueries({ queryKey: queryKeys.tables.layout() });
+            const layout = await getAppApi().tables.patchTable(payload.table.id, {
+              number: payload.table.numberLabel,
+              capacity: payload.table.capacity ?? 4,
+              floorId: payload.floorId,
+            });
+            syncTablesLayoutQueryData(qc, layout);
+            setFloorId(payload.floorId);
+            setSelectedId(payload.table.id);
+            flash(fr.tables.toastTableSaved);
           } catch {
             flash("Impossible d'enregistrer la table.");
-            return;
+            throw new Error("table_save_failed");
           }
-          setFloorId(payload.floorId);
-          setSelectedId(payload.table.id);
         }}
       />
 
@@ -554,14 +601,15 @@ export function TablesPage() {
         onConfirm={async () => {
           if (!deleteTarget) return;
           try {
-            await getAppApi().tables.deleteTable(deleteTarget.table.id);
-            await qc.invalidateQueries({ queryKey: queryKeys.tables.layout() });
+            const layout = await getAppApi().tables.deleteTable(deleteTarget.table.id);
+            syncTablesLayoutQueryData(qc, layout);
+            setDeleteTarget(null);
+            setSelectedId((id) => (id === deleteTarget.table.id ? null : id));
+            flash(fr.tables.toastTableDeleted);
           } catch {
             flash("Impossible de supprimer la table.");
-            return;
+            throw new Error("table_delete_failed");
           }
-          setDeleteTarget(null);
-          setSelectedId((id) => (id === deleteTarget.table.id ? null : id));
         }}
       />
 
@@ -632,5 +680,7 @@ export function TablesPage() {
         }}
       />
     </div>
+    </PageQueryState>
+    </PageShell>
   );
 }

@@ -12,6 +12,7 @@ export class UsersController {
     const body = req.body as {
       fullName: string;
       username: string;
+      password: string;
       phone?: string;
       email?: string;
       role: "ADMIN" | "MANAGER" | "CASHIER" | "WAITER";
@@ -27,6 +28,7 @@ export class UsersController {
     const body = req.body as {
       fullName?: string;
       username?: string;
+      password?: string;
       phone?: string;
       email?: string;
       role?: "ADMIN" | "MANAGER" | "CASHIER" | "WAITER";

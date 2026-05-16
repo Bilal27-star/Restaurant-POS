@@ -2,8 +2,8 @@ import { ArrowRight, Receipt, Search } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
-import { defaultOrderLinesForDisplay, orderDisplayRef } from "@/components/tables/tables-demo-data";
-import type { TableOrder } from "@/components/tables/tables-demo-data";
+import { defaultOrderLinesForDisplay, orderDisplayRef } from "@/components/tables/table-types";
+import type { TableOrder } from "@/components/tables/table-types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { searchDineInOrders } from "@/lib/tickets/dine-in-order-lookup";

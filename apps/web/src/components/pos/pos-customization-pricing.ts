@@ -4,7 +4,7 @@ import type {
   PosCartLineItem,
   PosCustomizationTemplate,
 } from "./pos-cart-types";
-import type { PosProduct } from "./pos-demo-data";
+import type { PosProduct } from "./pos-types";
 
 export function parsePriceLabelDa(label: string): number {
   const compact = label.replace(/\s/g, "").replace(/,/g, "");

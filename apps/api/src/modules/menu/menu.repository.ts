@@ -50,13 +50,22 @@ export class MenuRepository {
 
   async softDeleteCategory(restaurantId: string, categoryId: string) {
     return prisma.$transaction(async (tx) => {
+      const category = await tx.menuCategory.findFirst({
+        where: { id: categoryId, restaurantId },
+        select: { slug: true },
+      });
       await tx.menuItem.updateMany({
         where: { restaurantId, categoryId, deletedAt: null },
         data: { deletedAt: new Date() },
       });
       await tx.menuCategory.updateMany({
         where: { id: categoryId, restaurantId },
-        data: { deletedAt: new Date() },
+        data: {
+          deletedAt: new Date(),
+          slug: category
+            ? `${category.slug}-deleted-${Date.now()}`
+            : `deleted-${categoryId}`,
+        },
       });
     });
   }

@@ -8,7 +8,22 @@ import { Separator } from "@/components/ui/separator";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { fr } from "@/lib/locale/fr";
 import { cn } from "@/lib/utils";
-import { navSections, type NavItemConfig } from "./nav-config";
+import { formatNavBadgeValue, useNavCountsQuery } from "@/hooks/use-nav-counts";
+import { navSections, type NavBadgeSource, type NavItemConfig } from "./nav-config";
+
+function badgeForRoute(
+  source: NavBadgeSource | undefined,
+  raw: { occupiedTables: number; dineInOpenOrders: number; takeawayOpen: number } | undefined,
+): string | undefined {
+  if (!source || !raw) return undefined;
+  const n =
+    source === "occupiedTables"
+      ? raw.occupiedTables
+      : source === "dineInOpenOrders"
+        ? raw.dineInOpenOrders
+        : raw.takeawayOpen;
+  return formatNavBadgeValue(n);
+}
 
 const RAIL_ICON_BOX = "flex size-10 shrink-0 items-center justify-center rounded-xl p-0";
 
@@ -37,10 +52,12 @@ const NavItemRow = memo(function NavItemRow({
   item,
   collapsed,
   onNavigate,
+  badgeText,
 }: {
   item: NavItemConfig;
   collapsed: boolean;
   onNavigate?: () => void;
+  badgeText?: string;
 }) {
   const link = (
     <NavLink
@@ -67,9 +84,9 @@ const NavItemRow = memo(function NavItemRow({
     >
       <span className="relative flex size-5 shrink-0 items-center justify-center">
         <item.icon className="size-5 shrink-0" aria-hidden />
-        {item.iconBadge && !collapsed ? (
+        {badgeText && collapsed ? (
           <span className="absolute -right-2 -top-2 flex h-4 min-w-4 items-center justify-center rounded-full bg-pink-500 px-1 text-[10px] font-semibold leading-none text-white shadow-app-soft">
-            {item.iconBadge}
+            {badgeText}
           </span>
         ) : null}
       </span>
@@ -78,8 +95,8 @@ const NavItemRow = memo(function NavItemRow({
           <span className="min-w-0 flex-1 truncate">{item.label}</span>
           {item.kbd ? (
             <span className="shrink-0 text-[11px] text-[#6b7280] tabular-nums">{item.kbd}</span>
-          ) : item.count ? (
-            <span className="shrink-0 text-[11px] font-medium tabular-nums text-[#6b7280]">{item.count}</span>
+          ) : badgeText ? (
+            <span className="shrink-0 text-[11px] font-medium tabular-nums text-[#6b7280]">{badgeText}</span>
           ) : null}
         </>
       ) : null}
@@ -104,6 +121,7 @@ const NavItemRow = memo(function NavItemRow({
 
 export function SidebarNav({ collapsed = false, onToggleCollapsed, onNavigate }: SidebarNavProps) {
   const { user } = useAuth();
+  const { data: navCounts } = useNavCountsQuery();
   const visibleSections = useMemo(() => {
     const permSet = new Set(user?.permissions ?? []);
     return navSections
@@ -164,7 +182,13 @@ export function SidebarNav({ collapsed = false, onToggleCollapsed, onNavigate }:
           <nav className="flex w-full min-w-0 flex-col items-center gap-2 px-0 py-3" aria-label={fr.aria.mainNav}>
             <ul className="flex w-full min-w-0 flex-col items-center gap-2 p-0">
               {visibleSections.flatMap((s) => s.items).map((item) => (
-                <NavItemRow key={item.to} item={item} collapsed onNavigate={onNavigate} />
+                <NavItemRow
+                  key={item.to}
+                  item={item}
+                  collapsed
+                  onNavigate={onNavigate}
+                  badgeText={badgeForRoute(item.badgeSource, navCounts)}
+                />
               ))}
             </ul>
           </nav>
@@ -175,7 +199,13 @@ export function SidebarNav({ collapsed = false, onToggleCollapsed, onNavigate }:
                 <p className="px-3 pb-2 text-[11px] font-semibold uppercase tracking-wider text-[#6b7280]">{section.label}</p>
                 <div className="flex flex-col gap-0.5" aria-label={section.label}>
                   {section.items.map((item) => (
-                    <NavItemRow key={item.to} item={item} collapsed={false} onNavigate={onNavigate} />
+                    <NavItemRow
+                      key={item.to}
+                      item={item}
+                      collapsed={false}
+                      onNavigate={onNavigate}
+                      badgeText={badgeForRoute(item.badgeSource, navCounts)}
+                    />
                   ))}
                 </div>
               </div>

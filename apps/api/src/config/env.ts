@@ -24,6 +24,11 @@ const envSchema = z
     PIN_PEPPER: z.string().min(32, "PIN_PEPPER must be at least 32 characters"),
     AUTH_MAX_FAILED_LOGINS: z.coerce.number().int().min(3).max(50).default(8),
     AUTH_LOCKOUT_MINUTES: z.coerce.number().int().min(1).max(1440).default(15),
+    /** Set by Tauri embedded Node (`POS_DESKTOP_RUNTIME=1`) or local dev bootstrap. */
+    POS_DESKTOP_RUNTIME: z
+      .enum(["true", "false", "1", "0"])
+      .optional()
+      .transform((v) => v === "true" || v === "1"),
     AUTH_REFRESH_TOKEN_IN_BODY: z
       .enum(["true", "false"])
       .default("false")

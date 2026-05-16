@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -20,12 +21,13 @@ export interface CaisseCloseShiftModalProps {
   onOpenChange: (open: boolean) => void;
   shift: Shift;
   metrics: ShiftDrawerMetrics;
-  onConfirmClose: (input: { countedCashDa: number; notes: string }) => void;
+  onConfirmClose: (input: { countedCashDa: number; notes: string }) => void | Promise<void>;
 }
 
 export function CaisseCloseShiftModal({ open, onOpenChange, shift, metrics, onConfirmClose }: CaisseCloseShiftModalProps) {
   const [countedRaw, setCountedRaw] = useState("");
   const [notes, setNotes] = useState("");
+  const [closing, setClosing] = useState(false);
 
   const counted = parseDaInput(countedRaw);
   const diff = counted - metrics.expectedDrawerCashDa;
@@ -145,14 +147,22 @@ export function CaisseCloseShiftModal({ open, onOpenChange, shift, metrics, onCo
           </Button>
           <Button
             type="button"
-            disabled={!countedRaw.trim()}
+            disabled={!countedRaw.trim() || closing}
             onClick={() => {
-              onConfirmClose({ countedCashDa: counted, notes });
-              reset();
-              onOpenChange(false);
+              void (async () => {
+                setClosing(true);
+                try {
+                  await onConfirmClose({ countedCashDa: counted, notes });
+                  reset();
+                  onOpenChange(false);
+                } finally {
+                  setClosing(false);
+                }
+              })();
             }}
           >
-            Confirmer la clôture
+            {closing ? <Loader2 className="mr-2 size-4 animate-spin" aria-hidden /> : null}
+            {closing ? "Clôture…" : "Confirmer la clôture"}
           </Button>
         </DialogFooter>
       </DialogContent>

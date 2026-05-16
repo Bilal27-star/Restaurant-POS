@@ -50,28 +50,50 @@ function closedAtMs(o: SerializedTakeawayOrder): number {
 }
 
 export function useTakeawayOrders(nowMs: number) {
-  const { data: orders = [] } = useTakeawayOrdersQuery();
+  const ordersQuery = useTakeawayOrdersQuery();
+  const orders = ordersQuery.data ?? [];
   const qc = useQueryClient();
 
+  const refreshTakeawayQueries = () => {
+    void qc.invalidateQueries({ queryKey: queryKeys.orders.takeawayBoard() });
+    void qc.invalidateQueries({ queryKey: queryKeys.orders.takeawayHistory() });
+  };
+
   const startPreparing = async (id: string) => {
-    await getAppApi().orders.patch(id, { status: "PREPARING" });
-    await qc.invalidateQueries({ queryKey: queryKeys.orders.takeawayBoard() });
-    await qc.invalidateQueries({ queryKey: queryKeys.orders.takeawayHistory() });
+    try {
+      await getAppApi().orders.patch(id, { status: "PREPARING" });
+      refreshTakeawayQueries();
+    } catch (err) {
+      console.error("takeaway startPreparing failed", err);
+      throw err;
+    }
   };
   const markReady = async (id: string) => {
-    await getAppApi().orders.patch(id, { status: "READY" });
-    await qc.invalidateQueries({ queryKey: queryKeys.orders.takeawayBoard() });
-    await qc.invalidateQueries({ queryKey: queryKeys.orders.takeawayHistory() });
+    try {
+      await getAppApi().orders.patch(id, { status: "READY" });
+      refreshTakeawayQueries();
+    } catch (err) {
+      console.error("takeaway markReady failed", err);
+      throw err;
+    }
   };
   const markDelivered = async (id: string) => {
-    await getAppApi().orders.complete(id, {});
-    await qc.invalidateQueries({ queryKey: queryKeys.orders.takeawayBoard() });
-    await qc.invalidateQueries({ queryKey: queryKeys.orders.takeawayHistory() });
+    try {
+      await getAppApi().orders.complete(id, {});
+      refreshTakeawayQueries();
+    } catch (err) {
+      console.error("takeaway markDelivered failed", err);
+      throw err;
+    }
   };
   const cancelOrder = async (id: string) => {
-    await getAppApi().orders.cancel(id, {});
-    await qc.invalidateQueries({ queryKey: queryKeys.orders.takeawayBoard() });
-    await qc.invalidateQueries({ queryKey: queryKeys.orders.takeawayHistory() });
+    try {
+      await getAppApi().orders.cancel(id, {});
+      refreshTakeawayQueries();
+    } catch (err) {
+      console.error("takeaway cancelOrder failed", err);
+      throw err;
+    }
   };
 
   const [query, setQuery] = useState("");
@@ -134,6 +156,7 @@ export function useTakeawayOrders(nowMs: number) {
 
   return {
     orders,
+    ordersQuery,
     query,
     setQuery,
     statusFilter,

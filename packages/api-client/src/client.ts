@@ -16,6 +16,10 @@ export type PosApiClientOptions = {
   baseUrl: string;
   getAccessToken: () => string | null;
   onUnauthorized?: () => void;
+  /** Merged into every request (e.g. desktop client marker for local API bypass). */
+  getRequestHeaders?: () => Record<string, string>;
+  /** Optional trace hook for diagnostics (URL, status, method). */
+  onHttpTrace?: (info: { url: string; method: string; status: number }) => void;
 };
 
 function joinUrl(base: string, path: string): string {
@@ -45,15 +49,24 @@ export function createPosApiClient(opts: PosApiClientOptions) {
     if (token) {
       headers.set("Authorization", `Bearer ${token}`);
     }
+    const extra = opts.getRequestHeaders?.();
+    if (extra) {
+      for (const [k, v] of Object.entries(extra)) {
+        if (v) headers.set(k, v);
+      }
+    }
     if (init?.body !== undefined && !headers.has("Content-Type")) {
       headers.set("Content-Type", "application/json");
     }
 
-    const res = await fetch(joinUrl(apiRoot, path), {
+    const method = init?.method ?? "GET";
+    const url = joinUrl(apiRoot, path);
+    const res = await fetch(url, {
       ...init,
       headers,
       credentials: "include",
     });
+    opts.onHttpTrace?.({ url, method, status: res.status });
 
     const json = (await readJson(res)) as ApiSuccessEnvelope<T> | ApiErrorEnvelope | null;
 
@@ -84,6 +97,11 @@ export function createPosApiClient(opts: PosApiClientOptions) {
         ),
       logout: (body: Record<string, unknown> = {}) => request<{ ok: true }>("/auth/logout", { method: "POST", body: JSON.stringify(body) }),
       me: () => request<{ user: unknown; auth: unknown }>("/auth/me"),
+    },
+
+    navigation: {
+      getCounts: () =>
+        request<{ occupiedTables: number; dineInOpenOrders: number; takeawayOpen: number }>("/navigation/counts"),
     },
 
     users: {
@@ -119,8 +137,10 @@ export function createPosApiClient(opts: PosApiClientOptions) {
       getCatalog: () => request<unknown>("/menu/catalog"),
       createCategory: (body: { name: string; sortOrder?: number; colorToken?: string | null; iconKey?: string | null }) =>
         request<unknown>("/menu/categories", { method: "POST", body: JSON.stringify(body) }),
-      patchCategory: (categoryId: string, body: { name?: string; sortOrder?: number }) =>
-        request<unknown>(`/menu/categories/${categoryId}`, { method: "PATCH", body: JSON.stringify(body) }),
+      patchCategory: (
+        categoryId: string,
+        body: { name?: string; sortOrder?: number; colorToken?: string | null; iconKey?: string | null },
+      ) => request<unknown>(`/menu/categories/${categoryId}`, { method: "PATCH", body: JSON.stringify(body) }),
       deleteCategory: (categoryId: string) => request<unknown>(`/menu/categories/${categoryId}`, { method: "DELETE" }),
       createItem: (body: {
         categoryId: string;

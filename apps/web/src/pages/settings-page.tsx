@@ -20,6 +20,9 @@ import type { CaisseEmployee } from "@/components/caisse/caisse-financial-types"
 import { useCaisseStore } from "@/components/caisse/caisse-store";
 import { ConfirmDialog } from "@/components/menu/confirm-dialog";
 import { usePermission } from "@/auth/use-permission";
+import { PageQueryState } from "@/components/data/page-query-state";
+import { PageShell } from "@/components/data/page-shell";
+import { usePageRouteDiagnostics } from "@/hooks/use-page-route-diagnostics";
 import { getAppApi } from "@/lib/app-api";
 import { isTauriDesktop } from "@/lib/desktop/tauri-host";
 import { fr } from "@/lib/locale/fr";
@@ -27,6 +30,14 @@ import { cn } from "@/lib/utils";
 import { PrinterManager } from "@/services/printing";
 import { useUsersQuery, useUserMutations } from "@/hooks/use-users-queries";
 import { useSystemSettingsQuery, useSystemSettingsMutations } from "@/hooks/use-settings-queries";
+import {
+  buildReceiptSettingsPatch,
+  buildUserCreateBody,
+  buildUserPatchBody,
+  mapApiUserToCaisseEmployee,
+  readReceiptLinesFromSettingsJson,
+  type ApiUserListRow,
+} from "@/lib/users/user-form-utils";
 
 const settingsCard = cn(
   "rounded-[20px] border border-pos-border-subtle/90 bg-pos-glass/[0.45] p-6 shadow-surface-md ring-1 ring-violet-500/[0.07] backdrop-blur-sm md:p-8",
@@ -85,24 +96,21 @@ type ApiPrinterRow = {
   isActive: boolean;
 };
 
+type SettingsApiUser = ApiUserListRow;
+
 export function SettingsPage() {
-  const { data: usersData = [] } = useUsersQuery();
+  usePageRouteDiagnostics("settings");
+  const usersQuery = useUsersQuery();
+  const { data: usersData = [] } = usersQuery;
   const { createUser, patchUser } = useUserMutations();
   
-  const employees: CaisseEmployee[] = useMemo(() => {
-    return usersData.map((u: any) => ({
-      id: u.id,
-      name: u.fullName,
-      role: u.roles?.[0]?.role?.name || "Employé",
-      status: (u.status === "VACATION" ? "break" : u.status === "SUSPENDED" || u.status === "DEACTIVATED" ? "off" : "active") as "active" | "break" | "off",
-      avatarInitials: u.fullName.slice(0, 2).toUpperCase(),
-      avatarGradient: "from-blue-500 to-indigo-500",
-      contributionWeight: 50,
-      performanceScore: 80,
-    }));
-  }, [usersData]);
+  const employees: CaisseEmployee[] = useMemo(
+    () => usersData.map((u) => mapApiUserToCaisseEmployee(u)),
+    [usersData],
+  );
 
-  const { data: systemData } = useSystemSettingsQuery();
+  const systemSettingsQuery = useSystemSettingsQuery();
+  const { data: systemData } = systemSettingsQuery;
   const { patchSystemSettings } = useSystemSettingsMutations();
 
   const queryClient = useQueryClient();
@@ -121,11 +129,12 @@ export function SettingsPage() {
       setRestaurantName(systemData.restaurantName || "");
       setAddress(systemData.address || "");
       setRestaurantPhone(systemData.phone || "");
-      const sj = systemData.settingsJson || {};
-      setCurrency(sj.currency || "DA");
+      const sj = (systemData.settingsJson || {}) as Record<string, unknown>;
+      setCurrency(typeof sj.currency === "string" ? sj.currency : "DA");
       setTaxRate(String(sj.taxRate ?? "19"));
-      setReceiptHeader(sj.receiptHeader || "");
-      setReceiptFooter(sj.receiptFooter || "");
+      const receiptLines = readReceiptLinesFromSettingsJson(sj);
+      setReceiptHeader(receiptLines.header);
+      setReceiptFooter(receiptLines.footer);
     }
   }, [systemData]);
 
@@ -155,6 +164,7 @@ export function SettingsPage() {
 
   const [employeePanelOpen, setEmployeePanelOpen] = useState(false);
   const [editingEmployee, setEditingEmployee] = useState<CaisseEmployee | null>(null);
+  const [editingUserRow, setEditingUserRow] = useState<SettingsApiUser | null>(null);
   const [clearOpen, setClearOpen] = useState(false);
 
   const [toast, setToast] = useState<string | null>(null);
@@ -166,35 +176,42 @@ export function SettingsPage() {
 
   const handlePanelOpenChange = (open: boolean) => {
     setEmployeePanelOpen(open);
-    if (!open) setEditingEmployee(null);
+    if (!open) {
+      setEditingEmployee(null);
+      setEditingUserRow(null);
+    }
   };
 
   const openAddUser = () => {
     setEditingEmployee(null);
+    setEditingUserRow(null);
     setEmployeePanelOpen(true);
   };
 
   const openEditUser = (emp: CaisseEmployee) => {
+    const row = usersData.find((u: { id: string }) => u.id === emp.id) as SettingsApiUser | undefined;
     setEditingEmployee(emp);
+    setEditingUserRow(row ?? null);
     setEmployeePanelOpen(true);
   };
 
   const handleSaveAll = async () => {
     try {
+      const existingJson = (systemData?.settingsJson ?? {}) as Record<string, unknown>;
       await patchSystemSettings.mutateAsync({
         restaurantName,
         address,
         phone: restaurantPhone,
         settingsJson: {
+          ...existingJson,
           currency,
           taxRate: parseFloat(taxRate) || 0,
-          receiptHeader,
-          receiptFooter,
-        }
+          ...buildReceiptSettingsPatch(receiptHeader, receiptFooter, existingJson),
+        },
       });
       flash(fr.settingsPage.savedToast);
-    } catch (e: any) {
-      flash(e.message || "Erreur de sauvegarde");
+    } catch (e: unknown) {
+      flash(e instanceof Error ? e.message : "Erreur de sauvegarde");
     }
   };
 
@@ -222,7 +239,25 @@ export function SettingsPage() {
     }
   };
 
+  const pageLoading =
+    (usersQuery.isLoading && usersData.length === 0) ||
+    (systemSettingsQuery.isLoading && !systemData);
+  const pageError = usersQuery.isError || systemSettingsQuery.isError;
+  const pageErr = usersQuery.error ?? systemSettingsQuery.error;
+
   return (
+    <PageShell>
+    <PageQueryState
+      label="les paramètres"
+      isLoading={pageLoading}
+      isError={pageError}
+      error={pageErr}
+      onRetry={() => {
+        void usersQuery.refetch();
+        void systemSettingsQuery.refetch();
+        void printersQuery.refetch();
+      }}
+    >
     <div className="relative pb-28 md:pb-32">
       {toast ? (
         <div
@@ -567,10 +602,11 @@ export function SettingsPage() {
         <div className="mx-auto max-w-3xl">
           <Button
             type="button"
-            onClick={handleSaveAll}
-            className="h-12 w-full rounded-[16px] border-0 bg-gradient-to-r from-[#7c3aed] to-[#db2777] text-sm font-bold text-white shadow-[0_12px_40px_-12px_rgba(124,58,237,0.45)] transition hover:from-[#8b5cf6] hover:to-[#ec4899] hover:shadow-[0_16px_48px_-14px_rgba(219,39,119,0.35)] active:scale-[0.99]"
+            onClick={() => void handleSaveAll()}
+            disabled={patchSystemSettings.isPending}
+            className="h-12 w-full rounded-[16px] border-0 bg-gradient-to-r from-[#7c3aed] to-[#db2777] text-sm font-bold text-white shadow-[0_12px_40px_-12px_rgba(124,58,237,0.45)] transition hover:from-[#8b5cf6] hover:to-[#ec4899] hover:shadow-[0_16px_48px_-14px_rgba(219,39,119,0.35)] active:scale-[0.99] disabled:opacity-60"
           >
-            {fr.settingsPage.saveChanges}
+            {patchSystemSettings.isPending ? "Enregistrement…" : fr.settingsPage.saveChanges}
           </Button>
         </div>
       </div>
@@ -578,32 +614,28 @@ export function SettingsPage() {
       <CaisseAddEmployeePanel
         open={employeePanelOpen}
         onOpenChange={handlePanelOpenChange}
-        editingEmployee={editingEmployee as any}
+        editingEmployee={editingEmployee}
+        editingSource={
+          editingUserRow
+            ? { username: editingUserRow.username, phone: editingUserRow.phone, email: editingUserRow.email }
+            : null
+        }
         onSave={async (input) => {
           try {
-            await createUser.mutateAsync({
-              fullName: input.fullName,
-              username: input.fullName.toLowerCase().replace(/\s/g, ""),
-              role: "WAITER", // Or map from input.role
-              status: input.employmentStatus === "active" ? "ACTIVE" : input.employmentStatus === "vacation" ? "VACATION" : "SUSPENDED"
-            });
+            await createUser.mutateAsync(buildUserCreateBody(input));
             flash(fr.settingsPage.teamAdded(input.fullName));
-          } catch(e: any) {
-            flash(e.message || "Erreur");
+          } catch (e: unknown) {
+            flash(e instanceof Error ? e.message : "Erreur");
+            throw e;
           }
         }}
         onUpdate={async (id, input) => {
           try {
-            await patchUser.mutateAsync({
-              id,
-              body: {
-                fullName: input.fullName,
-                status: input.employmentStatus === "active" ? "ACTIVE" : input.employmentStatus === "vacation" ? "VACATION" : "SUSPENDED"
-              }
-            });
+            await patchUser.mutateAsync({ id, body: buildUserPatchBody(input) });
             flash(fr.settingsPage.teamUpdated(input.fullName));
-          } catch(e: any) {
-            flash(e.message || "Erreur");
+          } catch (e: unknown) {
+            flash(e instanceof Error ? e.message : "Erreur");
+            throw e;
           }
         }}
       />
@@ -618,5 +650,7 @@ export function SettingsPage() {
         onConfirm={() => flash(fr.settingsPage.clearToast)}
       />
     </div>
+    </PageQueryState>
+    </PageShell>
   );
 }

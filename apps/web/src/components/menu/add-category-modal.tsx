@@ -60,16 +60,7 @@ const COLOR_PRESETS: { id: string; label: string; tint: string }[] = [
 export interface AddCategoryModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onSave: (category: MenuCategory) => void;
-}
-
-function slugId(name: string) {
-  const base = name
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-|-$/g, "");
-  return `cat-${base || "new"}-${Math.random().toString(36).slice(2, 6)}`;
+  onSave: (category: MenuCategory) => void | Promise<void>;
 }
 
 export function AddCategoryModal({ open, onOpenChange, onSave }: AddCategoryModalProps) {
@@ -101,17 +92,19 @@ export function AddCategoryModal({ open, onOpenChange, onSave }: AddCategoryModa
       return;
     }
     setSaving(true);
-    await new Promise((r) => setTimeout(r, 320));
     const cat: MenuCategory = {
-      id: slugId(name),
+      id: "",
       name: name.trim(),
       iconId,
       iconTint: tint,
       description: description.trim() || undefined,
     };
-    onSave(cat);
-    setSaving(false);
-    onOpenChange(false);
+    try {
+      await onSave(cat);
+      onOpenChange(false);
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (

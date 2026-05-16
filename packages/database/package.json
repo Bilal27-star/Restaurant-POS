@@ -21,7 +21,7 @@
     "seed": "tsx prisma/seed.ts"
   },
   "devDependencies": {
-    "@pos/tsconfig": "workspace:*",
+    "@pos/tsconfig": "file:../config/typescript",
     "@types/bcrypt": "^5.0.2",
     "bcrypt": "^5.1.1",
     "tsx": "^4.19.2",

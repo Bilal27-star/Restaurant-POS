@@ -7,13 +7,17 @@
     "build": "tauri build",
     "build:mac": "tauri build --bundles dmg,app",
     "build:windows": "tauri build --bundles nsis,msi",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "tauri": "tauri",
+    "tauri:dev": "tauri dev",
+    "tauri:build": "tauri build",
+    "validate:tauri-config": "node src-tauri/scripts/validate-tauri-config.mjs"
   },
   "dependencies": {
-    "@pos/web": "workspace:*"
+    "@pos/web": "file:../web"
   },
   "devDependencies": {
-    "@pos/tsconfig": "workspace:*",
+    "@pos/tsconfig": "file:../../packages/config/typescript",
     "@tauri-apps/cli": "^2.1.0",
     "typescript": "^5.7.2"
   }

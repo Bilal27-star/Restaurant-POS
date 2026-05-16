@@ -1,36 +1,15 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod bootstrap;
 mod commands;
+mod desktop_log;
+mod desktop_paths;
 mod embedded_node;
 mod print_dispatch;
 
 use embedded_node::EmbeddedBackend;
 use tauri::Manager;
 use tauri_plugin_log::{Target, TargetKind, TimezoneStrategy};
-
-use std::path::{Path, PathBuf};
-
-/// Prefer `node.exe` on Windows; otherwise `node` under `resources/node-runtime/bin`.
-fn resolve_bundled_node_exe(resource_dir: &Path) -> Option<PathBuf> {
-    let bases = [
-        resource_dir.join("resources/node-runtime/bin"),
-        resource_dir.join("node-runtime/bin"),
-    ];
-    for base in &bases {
-        #[cfg(target_os = "windows")]
-        {
-            let win = base.join("node.exe");
-            if win.exists() {
-                return Some(win);
-            }
-        }
-        let nix = base.join("node");
-        if nix.exists() {
-            return Some(nix);
-        }
-    }
-    None
-}
 
 fn main() {
     #[cfg(debug_assertions)]
@@ -46,7 +25,7 @@ fn main() {
             .targets([
                 Target::new(TargetKind::Stdout),
                 Target::new(TargetKind::LogDir {
-                    file_name: Some("pos".into()),
+                    file_name: Some("pos-shell".into()),
                 }),
             ])
             .build(),
@@ -84,69 +63,7 @@ fn main() {
                 }
             }
 
-            if let (Ok(app_data), Ok(resource_dir)) = (app.path().app_data_dir(), app.path().resource_dir()) {
-                log::info!("Tauri paths: app_data={:?}, resource_dir={:?}", app_data, resource_dir);
-
-                let bundled_api_dir = if resource_dir.join("resources/bundled-api").exists() {
-                    resource_dir.join("resources/bundled-api")
-                } else {
-                    resource_dir.join("bundled-api")
-                };
-
-                let node_exe = match resolve_bundled_node_exe(&resource_dir) {
-                    Some(node_path) => {
-                        #[cfg(target_os = "macos")]
-                        {
-                            use std::os::unix::fs::PermissionsExt;
-                            if let Ok(metadata) = std::fs::metadata(&node_path) {
-                                let mut perms = metadata.permissions();
-                                if perms.mode() & 0o111 == 0 {
-                                    log::info!("Making node binary executable: {:?}", node_path);
-                                    perms.set_mode(perms.mode() | 0o111);
-                                    if let Err(e) = std::fs::set_permissions(&node_path, perms) {
-                                        log::error!("Failed to set permissions for node binary: {}", e);
-                                    }
-                                }
-                            }
-                        }
-                        node_path
-                    }
-                    None => {
-                        log::warn!(
-                            "Bundled Node not found under resource_dir ({:?}); using `node` from PATH",
-                            resource_dir
-                        );
-                        PathBuf::from("node")
-                    }
-                };
-
-                let runtime_path = bundled_api_dir.join("dist/desktop-runtime.js");
-
-                log::info!(
-                    "Resolved paths: bundled_api_dir={:?}, node_exe={:?}, runtime_path={:?}",
-                    bundled_api_dir,
-                    node_exe,
-                    runtime_path
-                );
-
-                if !runtime_path.exists() {
-                    log::error!("Backend runtime script not found at {:?}", runtime_path);
-                }
-
-                let env_pos_env_file = bundled_api_dir.join(".env");
-
-                embedded_node::start_embedded_backend_with_retries(
-                    &app.handle(),
-                    app_data.clone(),
-                    resource_dir.clone(),
-                    bundled_api_dir.clone(),
-                    node_exe,
-                    runtime_path,
-                    env_pos_env_file,
-                );
-            } else {
-                log::error!("Failed to resolve app_data or resource_dir paths");
-            }
+            bootstrap::start_embedded_pos_if_packaged(&app.handle());
 
             log::info!("POS desktop shell started");
             Ok(())

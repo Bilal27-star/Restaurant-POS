@@ -63,7 +63,7 @@ export interface CaisseAddExpenseModalProps {
     description?: string;
     paymentMethod: ExpensePaymentMethod;
     expenseDateMs: number;
-  }) => void;
+  }) => void | Promise<void>;
 }
 
 type SubmitPhase = "idle" | "loading" | "success";
@@ -125,19 +125,21 @@ export function CaisseAddExpenseModal({ open, onOpenChange, categories, onSubmit
       return;
     }
     setPhase("loading");
-    await new Promise((r) => setTimeout(r, 420));
-    onSubmit({
-      categoryId,
-      amountDa,
-      notes: notes.trim(),
-      description: description.trim() || undefined,
-      paymentMethod,
-      expenseDateMs: localDateStartMs(expenseDate),
-    });
-    setPhase("success");
-    await new Promise((r) => setTimeout(r, 720));
-    reset();
-    onOpenChange(false);
+    try {
+      await onSubmit({
+        categoryId,
+        amountDa,
+        notes: notes.trim(),
+        description: description.trim() || undefined,
+        paymentMethod,
+        expenseDateMs: localDateStartMs(expenseDate),
+      });
+      setPhase("success");
+      reset();
+      onOpenChange(false);
+    } catch {
+      setPhase("idle");
+    }
   };
 
   const overlayClass = cn(

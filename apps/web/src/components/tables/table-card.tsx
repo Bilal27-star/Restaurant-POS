@@ -4,8 +4,8 @@ import { Button } from "@/components/ui/button";
 import { fr } from "@/lib/locale/fr";
 import { cn } from "@/lib/utils";
 import { encodeTableDragPayload, TABLE_DRAG_MIME } from "./table-dnd";
-import type { RestaurantTable } from "./tables-demo-data";
-import { orderDisplayRef } from "./tables-demo-data";
+import type { RestaurantTable } from "./table-types";
+import { orderDisplayRef } from "./table-types";
 
 export interface TableCardProps {
   table: RestaurantTable;

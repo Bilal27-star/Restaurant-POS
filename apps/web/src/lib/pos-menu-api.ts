@@ -131,6 +131,106 @@ export function menuItemToProductCard(m: MenuItemApiRow): PosProductCardModel {
   };
 }
 
+function basePriceString(raw: unknown): string {
+  if (typeof raw === "string") return raw;
+  if (raw != null && typeof raw === "object" && "toString" in raw) {
+    return String((raw as { toString: () => string }).toString());
+  }
+  return "0";
+}
+
+/** One `/menu/catalog` response → POS categories + items (single HTTP round-trip). */
+export function parseMenuFromCatalog(raw: unknown): {
+  categories: MenuCategoryApiRow[];
+  items: MenuItemApiRow[];
+} {
+  if (!Array.isArray(raw)) return { categories: [], items: [] };
+  const categories: MenuCategoryApiRow[] = [];
+  const items: MenuItemApiRow[] = [];
+
+  for (const catRow of raw) {
+    if (!catRow || typeof catRow !== "object") continue;
+    const c = catRow as Record<string, unknown>;
+    const cid = typeof c.id === "string" ? c.id : "";
+    const cname = typeof c.name === "string" ? c.name : "";
+    const cslug = typeof c.slug === "string" ? c.slug : "";
+    const csort = typeof c.sortOrder === "number" ? c.sortOrder : Number(c.sortOrder) || 0;
+    if (!cid || !cname) continue;
+
+    const itemsRaw = c.items;
+    const catItems: unknown[] = Array.isArray(itemsRaw) ? itemsRaw : [];
+    const categoryMeta = {
+      id: cid,
+      name: cname,
+      slug: cslug,
+      sortOrder: csort,
+      colorToken:
+        typeof c.colorToken === "string" || c.colorToken === null ? (c.colorToken as string | null) : null,
+    };
+
+    categories.push({
+      id: cid,
+      name: cname,
+      slug: cslug,
+      sortOrder: csort,
+      colorToken: categoryMeta.colorToken,
+      iconKey: typeof c.iconKey === "string" || c.iconKey === null ? (c.iconKey as string | null) : null,
+      itemCount: catItems.length,
+    });
+
+    for (const itemRow of catItems) {
+      if (!itemRow || typeof itemRow !== "object") continue;
+      const r = itemRow as Record<string, unknown>;
+      const id = typeof r.id === "string" ? r.id : "";
+      const name = typeof r.name === "string" ? r.name : "";
+      if (!id || !name) continue;
+
+      const ingredientsRaw = r.ingredients;
+      const ingredients: MenuItemApiRow["ingredients"] = [];
+      if (Array.isArray(ingredientsRaw)) {
+        for (const ir of ingredientsRaw) {
+          if (!ir || typeof ir !== "object") continue;
+          const x = ir as Record<string, unknown>;
+          const iid = typeof x.id === "string" ? x.id : "";
+          const iname = typeof x.name === "string" ? x.name : "";
+          const removable = typeof x.removable === "boolean" ? x.removable : true;
+          const isort = typeof x.sortOrder === "number" ? x.sortOrder : Number(x.sortOrder) || 0;
+          if (iid && iname) ingredients.push({ id: iid, name: iname, removable, sortOrder: isort });
+        }
+      }
+
+      const modifiersRaw = r.modifiers;
+      const modifiers: MenuItemApiRow["modifiers"] = [];
+      if (Array.isArray(modifiersRaw)) {
+        for (const mr of modifiersRaw) {
+          if (!mr || typeof mr !== "object") continue;
+          const x = mr as Record<string, unknown>;
+          const mid = typeof x.id === "string" ? x.id : "";
+          const mname = typeof x.name === "string" ? x.name : "";
+          const extraPrice = basePriceString(x.extraPrice);
+          const msort = typeof x.sortOrder === "number" ? x.sortOrder : Number(x.sortOrder) || 0;
+          if (mid && mname) modifiers.push({ id: mid, name: mname, extraPrice, sortOrder: msort });
+        }
+      }
+
+      items.push({
+        id,
+        name,
+        description: typeof r.description === "string" ? r.description : "",
+        basePrice: basePriceString(r.basePrice),
+        available: typeof r.available === "boolean" ? r.available : true,
+        popular: typeof r.popular === "boolean" ? r.popular : false,
+        sortOrder: typeof r.sortOrder === "number" ? r.sortOrder : Number(r.sortOrder) || 0,
+        category: categoryMeta,
+        ingredients,
+        modifiers,
+      });
+    }
+  }
+
+  return { categories, items };
+}
+
 export function menuItemToModalData(m: MenuItemApiRow): PosMenuItemModalData {
   const base = Math.round(Number.parseFloat(m.basePrice) || 0);
   return {

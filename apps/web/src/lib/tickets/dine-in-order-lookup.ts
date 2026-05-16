@@ -1,5 +1,5 @@
-import type { FloorDef, RestaurantTable, TableOrder } from "@/components/tables/tables-demo-data";
-import { orderDisplayRef } from "@/components/tables/tables-demo-data";
+import type { FloorDef, RestaurantTable, TableOrder } from "@/components/tables/table-types";
+import { orderDisplayRef } from "@/components/tables/table-types";
 
 export type DineInOrderLookupHit = {
   floorId: string;

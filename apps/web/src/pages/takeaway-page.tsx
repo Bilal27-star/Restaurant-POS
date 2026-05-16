@@ -11,16 +11,22 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { PageQueryState } from "@/components/data/page-query-state";
+import { PageShell } from "@/components/data/page-shell";
+import { usePageRouteDiagnostics } from "@/hooks/use-page-route-diagnostics";
 import { useTakeawayHistoryQuery } from "@/hooks/use-takeaway-history-query";
 import { fr } from "@/lib/locale/fr";
 import { cn } from "@/lib/utils";
 import type { SerializedTakeawayOrder } from "@/types/serialized-order";
 
 export function TakeawayPage() {
+  usePageRouteDiagnostics("takeaway");
   const nowMs = useLiveNow(1000);
-  const historyQuery = useTakeawayHistoryQuery();
+  const [activeTab, setActiveTab] = useState<"live" | "history">("live");
+  const historyQuery = useTakeawayHistoryQuery(activeTab === "history");
   const {
     orders,
+    ordersQuery,
     query,
     setQuery,
     statusFilter,
@@ -37,14 +43,49 @@ export function TakeawayPage() {
   } = useTakeawayOrders(nowMs);
 
   const [cancelId, setCancelId] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<"live" | "history">("live");
+  const [cancelBusy, setCancelBusy] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
   const cancelTarget = useMemo(
     () => orders.find((o) => o.id === cancelId) ?? null,
     [cancelId, orders],
   );
 
+  const historyOrders = historyQuery.data ?? [];
+  const hasHistoryData = historyOrders.length > 0;
+  const hasBoardData = orders.length > 0;
+  const boardLoading = ordersQuery.isPending && !hasBoardData && activeTab === "live";
+  const boardError = ordersQuery.isError && !hasBoardData && activeTab === "live";
+  const showDegradedBanner = ordersQuery.isError && hasBoardData && activeTab === "live";
+
   return (
+    <PageShell fill>
+    <PageQueryState
+      label="les commandes à emporter"
+      isLoading={boardLoading}
+      isError={boardError}
+      error={ordersQuery.error}
+      onRetry={() => void ordersQuery.refetch()}
+      className="relative isolate flex min-h-0 flex-1 flex-col gap-6"
+      isEmpty={false}
+    >
     <div className="relative isolate flex min-h-0 flex-1 flex-col gap-6">
+      {actionError ? (
+        <p className="rounded-lg border border-rose-500/35 bg-rose-950/30 px-3 py-2 text-sm font-medium text-rose-100" role="alert">
+          {actionError}
+        </p>
+      ) : null}
+
+      {showDegradedBanner ? (
+        <div
+          className="mb-2 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-amber-500/35 bg-amber-950/25 px-3 py-2 text-xs text-amber-100"
+          role="status"
+        >
+          <span>{fr.dashboard.dashboardLoadError}</span>
+          <Button type="button" variant="outline" size="sm" className="h-8 rounded-lg" onClick={() => void ordersQuery.refetch()}>
+            {fr.dashboard.retry}
+          </Button>
+        </div>
+      ) : null}
       <header className="relative flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <div className="flex items-center gap-2 text-violet-300/90">
@@ -97,7 +138,12 @@ export function TakeawayPage() {
           onRequestCancel={setCancelId}
         />
       ) : (
-        <TakeawayHistory orders={historyQuery.data ?? []} isLoading={historyQuery.isLoading} />
+        <TakeawayHistory
+          orders={historyOrders}
+          isLoading={historyQuery.isPending && !hasHistoryData}
+          isError={historyQuery.isError && !hasHistoryData}
+          onRetry={() => void historyQuery.refetch()}
+        />
       )}
 
       <Dialog open={cancelId !== null} onOpenChange={(open) => !open && setCancelId(null)}>
@@ -120,22 +166,45 @@ export function TakeawayPage() {
               type="button"
               variant="destructive"
               className="min-h-11"
-              disabled={!cancelTarget}
+              disabled={!cancelTarget || cancelBusy}
               onClick={() => {
-                if (cancelId) cancelOrder(cancelId);
-                setCancelId(null);
+                void (async () => {
+                  if (!cancelId) return;
+                  setCancelBusy(true);
+                  setActionError(null);
+                  try {
+                    await cancelOrder(cancelId);
+                    setCancelId(null);
+                  } catch {
+                    setActionError("Impossible d'annuler la commande.");
+                  } finally {
+                    setCancelBusy(false);
+                  }
+                })();
               }}
             >
-              {fr.takeawayPage.cancelOrder}
+              {cancelBusy ? "Annulation…" : fr.takeawayPage.cancelOrder}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>
+    </PageQueryState>
+    </PageShell>
   );
 }
 
-function TakeawayHistory({ orders, isLoading }: { orders: SerializedTakeawayOrder[]; isLoading: boolean }) {
+function TakeawayHistory({
+  orders,
+  isLoading,
+  isError,
+  onRetry,
+}: {
+  orders: SerializedTakeawayOrder[];
+  isLoading: boolean;
+  isError?: boolean;
+  onRetry?: () => void;
+}) {
   const completed = useMemo(
     () =>
       orders
@@ -148,6 +217,19 @@ function TakeawayHistory({ orders, isLoading }: { orders: SerializedTakeawayOrde
     return (
       <div className="flex flex-1 items-center justify-center rounded-2xl border border-white/[0.08] bg-zinc-900/30 py-16 text-sm text-slate-400">
         Chargement…
+      </div>
+    );
+  }
+
+  if (isError) {
+    return (
+      <div className="flex flex-1 flex-col items-center justify-center gap-3 rounded-2xl border border-red-500/35 bg-red-950/25 px-6 py-16 text-center">
+        <p className="text-sm text-red-100">{fr.dashboard.dashboardLoadError}</p>
+        {onRetry ? (
+          <Button type="button" variant="outline" size="sm" className="h-9 rounded-lg" onClick={onRetry}>
+            {fr.dashboard.retry}
+          </Button>
+        ) : null}
       </div>
     );
   }

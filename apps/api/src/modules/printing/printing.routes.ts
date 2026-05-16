@@ -1,7 +1,7 @@
 import { Router } from "express";
-import rateLimit from "express-rate-limit";
 
 import type { Env } from "../../config/env.js";
+import { createScopedRateLimiter } from "../../middleware/rateLimit.js";
 import { PermissionCodes } from "../../core/auth/permission-codes.js";
 import { createRequireActiveSession, createRequireAuth, createRequirePermission } from "../../middleware/requireAuth.js";
 import { validateRequest } from "../../validators/validateRequest.js";
@@ -24,12 +24,10 @@ export function createPrintingRouter(env: Env): Router {
   const requireAuth = createRequireAuth(env);
   const requirePrinting = createRequirePermission(PermissionCodes.PRINTING_USE);
   const requireActiveSession = createRequireActiveSession();
-  const printWriteLimiter = rateLimit({
+  const printWriteLimiter = createScopedRateLimiter(env, undefined, {
     windowMs: 60 * 1000,
     limit: 90,
-    standardHeaders: true,
-    legacyHeaders: false,
-    message: { success: false as const, error: "Too many print operations" },
+    message: "Too many print operations",
   });
 
   const repo = new PrintingRepository();

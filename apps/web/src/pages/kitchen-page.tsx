@@ -1,5 +1,5 @@
 import { CheckCircle2, Clock, Flame, Loader2, Utensils } from "lucide-react";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useKitchenOrdersQuery } from "@/hooks/use-kitchen-orders-query";
 import { fr } from "@/lib/locale/fr";
@@ -11,6 +11,8 @@ import { Button } from "@/components/ui/button";
 export function KitchenPage() {
   const qc = useQueryClient();
   const { data: orders = [], isLoading, isError } = useKitchenOrdersQuery();
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [busyOrderId, setBusyOrderId] = useState<string | null>(null);
 
   const preparingOrders = useMemo(() => {
     return orders.filter((o: any) => o.status === "PREPARING" || o.status === "PENDING");
@@ -21,6 +23,8 @@ export function KitchenPage() {
   }, [orders]);
 
   const handleUpdateStatus = async (orderId: string, status: "READY" | "COMPLETED") => {
+    setBusyOrderId(orderId);
+    setActionError(null);
     try {
       if (status === "READY") {
         await getAppApi().orders.patch(orderId, { status: "READY" });
@@ -30,6 +34,9 @@ export function KitchenPage() {
       await qc.invalidateQueries({ queryKey: queryKeys.orders.all() });
     } catch (err) {
       console.error("Failed to update order status", err);
+      setActionError("Impossible de mettre à jour le statut de la commande.");
+    } finally {
+      setBusyOrderId(null);
     }
   };
 
@@ -43,6 +50,12 @@ export function KitchenPage() {
 
   return (
     <div className="flex h-full flex-col space-y-6">
+      {actionError ? (
+        <p className="rounded-lg border border-rose-500/35 bg-rose-950/30 px-3 py-2 text-sm font-medium text-rose-100" role="alert">
+          {actionError}
+        </p>
+      ) : null}
+
       <header className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-foreground">{fr.kitchen.title}</h1>
@@ -71,14 +84,16 @@ export function KitchenPage() {
             <KitchenOrderCard
               key={order.id}
               order={order}
-              onMarkReady={() => handleUpdateStatus(order.id, "READY")}
+              busy={busyOrderId === order.id}
+              onMarkReady={() => void handleUpdateStatus(order.id, "READY")}
             />
           ))}
           {readyOrders.map((order: any) => (
             <KitchenOrderCard
               key={order.id}
               order={order}
-              onMarkCompleted={() => handleUpdateStatus(order.id, "COMPLETED")}
+              busy={busyOrderId === order.id}
+              onMarkCompleted={() => void handleUpdateStatus(order.id, "COMPLETED")}
               isReady
             />
           ))}
@@ -93,11 +108,13 @@ function KitchenOrderCard({
   onMarkReady,
   onMarkCompleted,
   isReady = false,
+  busy = false,
 }: {
   order: any;
   onMarkReady?: () => void;
   onMarkCompleted?: () => void;
   isReady?: boolean;
+  busy?: boolean;
 }) {
   const elapsedMinutes = Math.floor((Date.now() - new Date(order.openedAt).getTime()) / 60000);
   const isUrgent = elapsedMinutes > 15;
@@ -164,6 +181,7 @@ function KitchenOrderCard({
       <div className="p-4 pt-0">
         <Button
           onClick={isReady ? onMarkCompleted : onMarkReady}
+          disabled={busy}
           className={cn(
             "h-12 w-full rounded-xl font-bold shadow-lg transition-all active:scale-[0.98]",
             isReady
@@ -171,7 +189,7 @@ function KitchenOrderCard({
               : "bg-violet-600 hover:bg-violet-500 text-white shadow-violet-900/20"
           )}
         >
-          {isReady ? fr.kitchen.markCompleted : fr.kitchen.markReady}
+          {busy ? "…" : isReady ? fr.kitchen.markCompleted : fr.kitchen.markReady}
         </Button>
       </div>
     </div>

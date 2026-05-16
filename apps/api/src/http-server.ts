@@ -5,7 +5,8 @@ import { createHttpApplication } from "./app.js";
 import { createDomainLogger } from "./config/logger.js";
 import { disconnectPrisma } from "./prisma/index.js";
 import { attachRealtimeLayer } from "./realtime/realtime-server.js";
-import { ensureDemoTenantIfEmpty } from "./bootstrap/ensure-demo-data.js";
+import { clearAuthThrottleStateIfDesktop } from "./bootstrap/clear-auth-throttle-state.js";
+import { ensureInitialTenantIfEmpty } from "./bootstrap/ensure-initial-tenant.js";
 
 /** Shared HTTP stack for `server.ts` (dev) and `desktop-runtime.ts` (Tauri embedded API). */
 export async function startPosHttpServer(env: Env): Promise<{
@@ -17,12 +18,34 @@ export async function startPosHttpServer(env: Env): Promise<{
   const httpServer = createServer(app);
   const { shutdown: shutdownRealtime } = attachRealtimeLayer(httpServer, env, realtimeLogger);
 
-  await ensureDemoTenantIfEmpty(env, rootLogger);
+  await clearAuthThrottleStateIfDesktop(env, rootLogger);
+  const { adminStatus } = await ensureInitialTenantIfEmpty(env, rootLogger);
+  console.log(adminStatus === "created" ? "[BOOT] admin created" : "[BOOT] admin exists");
+
+  /** Desktop + local POS: bind loopback explicitly so `http://127.0.0.1:${PORT}` from Tauri/web always matches. */
+  const listenHost = "127.0.0.1";
 
   await new Promise<void>((resolve, reject) => {
-    httpServer.once("error", reject);
-    httpServer.listen(env.PORT, () => {
-      rootLogger.info({ port: env.PORT, env: env.NODE_ENV }, "HTTP server listening");
+    const onError = (err: NodeJS.ErrnoException) => {
+      httpServer.off("error", onError);
+      if (err.code === "EADDRINUSE") {
+        reject(
+          new Error(
+            `HTTP listen failed: port ${env.PORT} is already in use on ${listenHost}. Close the other process using this port.`,
+          ),
+        );
+        return;
+      }
+      reject(err);
+    };
+    httpServer.once("error", onError);
+    httpServer.listen(env.PORT, listenHost, () => {
+      httpServer.off("error", onError);
+      rootLogger.info(
+        { port: env.PORT, host: listenHost, env: env.NODE_ENV },
+        "HTTP server listening",
+      );
+      console.log(`[BOOT] API listening on ${listenHost}:${env.PORT}`);
       resolve();
     });
   });

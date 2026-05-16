@@ -1,6 +1,6 @@
 import { create } from "zustand";
 
-import type { FloorDef, RestaurantTable } from "@/components/tables/tables-demo-data";
+import type { FloorDef, RestaurantTable } from "@/components/tables/table-types";
 
 function cloneFloors(floors: FloorDef[]): FloorDef[] {
   return structuredClone(floors);
@@ -9,7 +9,7 @@ function cloneFloors(floors: FloorDef[]): FloorDef[] {
 type DineInFloorsState = {
   floors: FloorDef[];
   hydrateFloors: (floors: FloorDef[]) => void;
-  resetFloors: (seed?: FloorDef[]) => void;
+  resetFloors: (initialFloors?: FloorDef[]) => void;
   moveTable: (payload: {
     fromFloorId: string;
     tableId: string;
@@ -25,8 +25,8 @@ export const useDineInFloorsStore = create<DineInFloorsState>((set) => ({
     set({ floors: cloneFloors(floors) });
   },
 
-  resetFloors: (seed) => {
-    set({ floors: cloneFloors(seed ?? []) });
+  resetFloors: (initialFloors?: FloorDef[]) => {
+    set({ floors: cloneFloors(initialFloors ?? []) });
   },
 
   moveTable: ({ fromFloorId, tableId, toFloorId, insertBeforeId }) => {

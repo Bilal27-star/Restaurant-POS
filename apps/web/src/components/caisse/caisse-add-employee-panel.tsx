@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet";
 import { fr } from "@/lib/locale/fr";
+import { slugUsername } from "@/lib/users/user-form-utils";
 import { cn } from "@/lib/utils";
 import { parseDaInput } from "./caisse-amount-utils";
 import type { CaisseEmployee } from "./caisse-financial-types";
@@ -66,10 +67,12 @@ const sectionCard = cn("rounded-[18px] border p-4 sm:p-5", BORDER, "bg-[#1f2937]
 export interface CaisseAddEmployeePanelProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onSave: (input: AddCaisseEmployeeInput) => void;
+  onSave: (input: AddCaisseEmployeeInput) => void | Promise<void>;
   /** Edit mode: hydrate from this employee; submit calls `onUpdate`. */
   editingEmployee?: CaisseEmployee | null;
-  onUpdate?: (id: string, input: AddCaisseEmployeeInput) => void;
+  /** When editing, load real auth fields from the API user row (never placeholder data). */
+  editingSource?: { username: string; phone?: string | null; email?: string | null } | null;
+  onUpdate?: (id: string, input: AddCaisseEmployeeInput) => void | Promise<void>;
 }
 
 type ShiftKind = "morning" | "evening" | "night";
@@ -87,6 +90,7 @@ export function CaisseAddEmployeePanel({
   onOpenChange,
   onSave,
   editingEmployee = null,
+  editingSource = null,
   onUpdate,
 }: CaisseAddEmployeePanelProps) {
   const formId = useId();
@@ -169,17 +173,17 @@ export function CaisseAddEmployeePanel({
     if (!open) return;
     if (editingEmployee) {
       setFullName(editingEmployee.name);
-      setPhone("0550123456");
-      setEmail("");
+      setPhone(editingSource?.phone?.trim() ?? "");
+      setEmail(editingSource?.email?.trim() ?? "");
       setPhotoPreview((current) => {
         if (current) URL.revokeObjectURL(current);
         return null;
       });
       setPhotoFile(null);
       setRole(normalizeRoleForSelect(editingEmployee.role));
-      setUsername(`user_${editingEmployee.id.replace(/\W/g, "").slice(0, 10)}`);
-      setPin("1234");
-      setPassword("password12");
+      setUsername((editingSource?.username ?? slugUsername(editingEmployee.name)).trim());
+      setPin("");
+      setPassword("");
       setShowPassword(false);
       setPermissions(Object.fromEntries(PERMISSION_IDS.map((id) => [id, false])) as Record<PermissionId, boolean>);
       setShiftType("morning");
@@ -193,7 +197,7 @@ export function CaisseAddEmployeePanel({
     } else {
       reset();
     }
-  }, [open, editingEmployee?.id, reset]);
+  }, [open, editingEmployee?.id, editingSource, reset]);
 
   const validate = (): boolean => {
     const next: FieldErrors = {};
@@ -204,9 +208,13 @@ export function CaisseAddEmployeePanel({
     if (!role) next.role = fr.caisseEmployee.errRole;
     if (!username.trim()) next.username = fr.caisseEmployee.errUsername;
     else if (username.trim().length < 2) next.username = fr.caisseEmployee.errUsernameShort;
-    if (!/^\d{4}$/.test(pin)) next.pin = fr.caisseEmployee.errPinFormat;
-    if (!password) next.password = fr.caisseEmployee.errPassword;
-    else if (password.length < 8) next.password = fr.caisseEmployee.errPasswordShort;
+    if (pin.trim() && !/^\d{4}$/.test(pin)) next.pin = fr.caisseEmployee.errPinFormat;
+    if (!editingEmployee) {
+      if (!password) next.password = fr.caisseEmployee.errPassword;
+      else if (password.length < 6) next.password = fr.caisseEmployee.errPasswordShort;
+    } else if (password && password.length < 6) {
+      next.password = fr.caisseEmployee.errPasswordShort;
+    }
     if (!startTime) next.startTime = fr.caisseEmployee.errRequired;
     if (!endTime) next.endTime = fr.caisseEmployee.errRequired;
     const salaryDa = parseDaInput(salaryRaw);
@@ -218,20 +226,30 @@ export function CaisseAddEmployeePanel({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!validate()) return;
-    setSaving(true);
-    await new Promise((r) => setTimeout(r, 650));
     const payload: AddCaisseEmployeeInput = {
       fullName: fullName.trim(),
       role,
       employmentStatus,
+      username: username.trim(),
+      phone: phone.trim() || undefined,
+      email: email.trim() || undefined,
     };
-    if (editingEmployee && onUpdate) {
-      onUpdate(editingEmployee.id, payload);
-    } else {
-      onSave(payload);
+    if (!editingEmployee) {
+      payload.password = password.trim();
+    } else if (password.trim()) {
+      payload.password = password.trim();
     }
-    setSaving(false);
-    handleOpenChange(false);
+    setSaving(true);
+    try {
+      if (editingEmployee && onUpdate) {
+        await onUpdate(editingEmployee.id, payload);
+      } else {
+        await onSave(payload);
+      }
+      handleOpenChange(false);
+    } finally {
+      setSaving(false);
+    }
   };
 
   const togglePermission = (id: PermissionId) => {

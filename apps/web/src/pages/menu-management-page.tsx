@@ -1,4 +1,4 @@
-import { FolderPlus, LayoutGrid, Plus } from "lucide-react";
+import { FolderPlus, LayoutGrid, Plus, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { AddCategoryModal } from "@/components/menu/add-category-modal";
@@ -12,18 +12,33 @@ import type {
 import { MenuItemCard } from "@/components/menu/menu-item-card";
 import { fr } from "@/lib/locale/fr";
 import { PosCategoryRail } from "@/components/pos/pos-category-rail";
-import type { PosCategory } from "@/components/pos/pos-demo-data";
+import type { PosCategory } from "@/components/pos/pos-types";
 import { cn } from "@/lib/utils";
-import { Loader2 } from "lucide-react";
-import { useMenuCategoriesQuery, useMenuItemsQuery, useMenuMutations } from "@/hooks/use-menu-management-queries";
+import { PageQueryState } from "@/components/data/page-query-state";
+import { PageShell } from "@/components/data/page-shell";
+import { usePageRouteDiagnostics } from "@/hooks/use-page-route-diagnostics";
+import {
+  menuMutationErrorMessage,
+  useMenuCategoriesQuery,
+  useMenuItemsQuery,
+  useMenuMutations,
+} from "@/hooks/use-menu-management-queries";
 
 export function MenuManagementPage() {
-  const { data: rawCategories = [], isLoading: isLoadingCategories } = useMenuCategoriesQuery();
-  const { data: rawItems = [], isLoading: isLoadingItems } = useMenuItemsQuery();
-  const { createCategory, patchCategory, deleteCategory, reorderCategories, createItem, patchItem, deleteItem } = useMenuMutations();
+  usePageRouteDiagnostics("menu");
+  const categoriesQuery = useMenuCategoriesQuery();
+  const itemsQuery = useMenuItemsQuery();
+  const { data: rawCategories, isLoading: isLoadingCategories, isError: categoriesError, error: categoriesErr } = categoriesQuery;
+  const { data: rawItems, isLoading: isLoadingItems, isError: itemsError, error: itemsErr } = itemsQuery;
+  const { createCategory, deleteCategory, reorderCategories, createItem, patchItem, deleteItem } = useMenuMutations();
 
-  const categories = useMemo(() => rawCategories as MenuCategory[], [rawCategories]);
-  const items = useMemo(() => rawItems as MenuItem[], [rawItems]);
+  const categories = rawCategories ?? [];
+  const items = rawItems ?? [];
+  const hasMenuData = categories.length > 0 || items.length > 0;
+  const menuLoading = (isLoadingCategories || isLoadingItems) && !hasMenuData;
+  const menuError = (categoriesError || itemsError) && !hasMenuData;
+  const menuErr = categoriesErr ?? itemsErr;
+  const showDegradedBanner = (categoriesError || itemsError) && hasMenuData;
 
   const [selectedCategoryId, setSelectedCategoryId] = useState("");
 
@@ -31,6 +46,7 @@ export function MenuManagementPage() {
   const [addItemOpen, setAddItemOpen] = useState(false);
   const [editItem, setEditItem] = useState<MenuItem | null>(null);
   const [deleteItemId, setDeleteItemId] = useState<string | null>(null);
+  const [deleteCategoryId, setDeleteCategoryId] = useState<string | null>(null);
 
   const [toast, setToast] = useState<string | null>(null);
 
@@ -72,15 +88,17 @@ export function MenuManagementPage() {
 
   const handleSaveItem = async (payload: MenuItem) => {
     try {
-      const isEdit = items.some((i) => i.id === payload.id);
+      const isEdit = Boolean(payload.id) && items.some((i) => i.id === payload.id);
       if (isEdit) {
         await patchItem.mutateAsync({ id: payload.id, body: payload });
       } else {
         await createItem.mutateAsync(payload);
       }
+      await Promise.all([categoriesQuery.refetch(), itemsQuery.refetch()]);
       showToast(isEdit ? fr.menuManagement.toastUpdated : fr.menuManagement.toastAdded);
-    } catch (err: any) {
-      showToast(err.message || "Failed to save item");
+    } catch (err) {
+      showToast(menuMutationErrorMessage(err));
+      throw err;
     }
   };
 
@@ -90,18 +108,33 @@ export function MenuManagementPage() {
       await deleteItem.mutateAsync(deleteItemId);
       setDeleteItemId(null);
       showToast(fr.menuManagement.toastRemoved);
-    } catch (err: any) {
-      showToast(err.message || "Failed to delete item");
+    } catch (err) {
+      showToast(menuMutationErrorMessage(err));
     }
   };
 
   const handleAddCategory = async (cat: MenuCategory) => {
     try {
       await createCategory.mutateAsync(cat);
-      setSelectedCategoryId(cat.id);
+      await itemsQuery.refetch();
+      const { data: fresh } = await categoriesQuery.refetch();
+      const created = fresh?.find((c) => c.name === cat.name);
+      if (created) setSelectedCategoryId(created.id);
       showToast(fr.menuManagement.toastCategory);
-    } catch (err: any) {
-      showToast(err.message || "Failed to add category");
+    } catch (err) {
+      showToast(menuMutationErrorMessage(err));
+      throw err;
+    }
+  };
+
+  const handleDeleteCategoryConfirm = async () => {
+    if (!deleteCategoryId) return;
+    try {
+      await deleteCategory.mutateAsync(deleteCategoryId);
+      setDeleteCategoryId(null);
+      showToast(fr.menuManagement.toastRemoved);
+    } catch (err) {
+      showToast(menuMutationErrorMessage(err));
     }
   };
 
@@ -109,8 +142,8 @@ export function MenuManagementPage() {
     try {
       await patchItem.mutateAsync({ id: itemId, body: { available } });
       showToast(fr.menuManagement.toastAvailability);
-    } catch (err: any) {
-      showToast(err.message || "Failed to update availability");
+    } catch (err) {
+      showToast(menuMutationErrorMessage(err));
     }
   };
 
@@ -128,8 +161,8 @@ export function MenuManagementPage() {
     try {
       await reorderCategories.mutateAsync(orders);
       showToast("Ordre des catégories mis à jour");
-    } catch (err: any) {
-      showToast(err.message || "Failed to reorder categories");
+    } catch (err) {
+      showToast(menuMutationErrorMessage(err));
     }
   };
 
@@ -140,7 +173,41 @@ export function MenuManagementPage() {
     : LayoutGrid;
 
   return (
+    <PageShell fill>
+    <PageQueryState
+      label="le menu"
+      isLoading={menuLoading}
+      isError={menuError}
+      error={menuErr}
+      isEmpty={false}
+      onRetry={() => {
+        void categoriesQuery.refetch();
+        void itemsQuery.refetch();
+      }}
+      className="relative flex min-h-0 flex-1 flex-col overflow-hidden bg-transparent"
+      showLoadingOverlay={(isLoadingCategories || isLoadingItems) && hasMenuData}
+    >
     <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden bg-transparent">
+      {showDegradedBanner ? (
+        <div
+          className="mb-2 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-amber-500/35 bg-amber-950/25 px-3 py-2 text-xs text-amber-100"
+          role="status"
+        >
+          <span>{fr.dashboard.dashboardLoadError}</span>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="h-8 rounded-lg"
+            onClick={() => {
+              void categoriesQuery.refetch();
+              void itemsQuery.refetch();
+            }}
+          >
+            {fr.dashboard.retry}
+          </Button>
+        </div>
+      ) : null}
       {toast ? (
         <div
           className="fixed bottom-6 left-1/2 z-[100] max-w-md -translate-x-1/2 rounded-xl border border-pos-border-subtle bg-pos-depth/95 px-4 py-3 text-center text-sm font-semibold text-foreground shadow-surface-lg ring-1 ring-black/[0.06] backdrop-blur-md"
@@ -150,13 +217,7 @@ export function MenuManagementPage() {
         </div>
       ) : null}
 
-      {(isLoadingCategories || isLoadingItems) && categories.length === 0 ? (
-        <div className="flex flex-1 items-center justify-center">
-          <Loader2 className="h-8 w-8 animate-spin text-pos-neon-magenta" />
-        </div>
-      ) : (
-      <>
-        <div className="relative z-[1] flex min-h-0 flex-1 flex-col">
+      <div className="relative z-[1] flex min-h-0 flex-1 flex-col">
         <div
           className={cn(
             "flex shrink-0 flex-col gap-3 border-b border-pos-border-subtle bg-pos-depth/40 px-4 py-3 backdrop-blur-md md:px-6",
@@ -200,12 +261,26 @@ export function MenuManagementPage() {
 
           <div className="min-h-0 min-w-0 flex-1 overflow-y-auto xl:border-r xl:border-pos-border-subtle">
             <div className="px-4 py-4 md:px-6 md:py-5">
-              <div className="mb-4 flex flex-wrap items-baseline gap-2">
-                <div className="flex items-center gap-2">
-                  <SelectedCategoryIcon className="h-7 w-7 text-pos-neon-magenta" aria-hidden />
-                  <h2 className="text-xl font-bold tracking-tight text-pos-neon-magenta md:text-2xl">{selectedCategoryName}</h2>
+              <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+                <div className="flex flex-wrap items-baseline gap-2">
+                  <div className="flex items-center gap-2">
+                    <SelectedCategoryIcon className="h-7 w-7 text-pos-neon-magenta" aria-hidden />
+                    <h2 className="text-xl font-bold tracking-tight text-pos-neon-magenta md:text-2xl">{selectedCategoryName}</h2>
+                  </div>
+                  <span className="text-base font-medium text-muted-foreground">({visibleItems.length})</span>
                 </div>
-                <span className="text-base font-medium text-muted-foreground">({visibleItems.length})</span>
+                {selectedCategoryId ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-9 gap-1.5 rounded-lg border-rose-500/30 text-rose-300 hover:bg-rose-950/40"
+                    onClick={() => setDeleteCategoryId(selectedCategoryId)}
+                  >
+                    <Trash2 className="size-3.5" aria-hidden />
+                    {fr.menuManagement.deleteConfirm}
+                  </Button>
+                ) : null}
               </div>
 
               {visibleItems.length === 0 ? (
@@ -261,10 +336,22 @@ export function MenuManagementPage() {
         categories={categories}
         item={editItem}
         defaultCategoryId={selectedCategoryId}
-        onSave={(payload) => {
-          handleSaveItem(payload);
+        onSave={async (payload) => {
+          await handleSaveItem(payload);
           setEditItem(null);
         }}
+      />
+
+      <ConfirmDialog
+        open={deleteCategoryId != null}
+        onOpenChange={(o) => {
+          if (!o) setDeleteCategoryId(null);
+        }}
+        title={fr.menuManagement.deleteTitle}
+        description="Les plats de cette catégorie seront aussi supprimés."
+        confirmLabel={fr.menuManagement.deleteConfirm}
+        destructive
+        onConfirm={handleDeleteCategoryConfirm}
       />
 
       <ConfirmDialog
@@ -278,8 +365,8 @@ export function MenuManagementPage() {
         destructive
         onConfirm={handleDeleteConfirm}
         />
-      </>
-      )}
     </div>
+    </PageQueryState>
+    </PageShell>
   );
 }

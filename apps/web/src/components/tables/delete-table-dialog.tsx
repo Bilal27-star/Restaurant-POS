@@ -10,7 +10,7 @@ import {
 } from "@/components/ui/dialog";
 import { fr } from "@/lib/locale/fr";
 import { cn } from "@/lib/utils";
-import type { RestaurantTable } from "./tables-demo-data";
+import type { RestaurantTable } from "./table-types";
 
 export interface DeleteTableDialogProps {
   open: boolean;

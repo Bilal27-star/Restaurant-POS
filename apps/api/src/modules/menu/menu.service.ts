@@ -1,5 +1,7 @@
 import { Prisma } from "@prisma/client";
 
+import { prisma } from "@pos/database";
+
 import { ApiError } from "../../core/http/ApiError.js";
 import { money } from "../../core/orders/money.js";
 import { getRealtimeHub } from "../../realtime/registry.js";
@@ -25,7 +27,7 @@ function slugify(name: string): string {
 export class MenuService {
   constructor(private readonly repo: MenuRepository) {}
 
-  catalog(restaurantId: string): Promise<MenuCatalogCategory[]> {
+  async catalog(restaurantId: string): Promise<MenuCatalogCategory[]> {
     return this.repo.listCatalog(restaurantId);
   }
 
@@ -65,23 +67,35 @@ export class MenuService {
     const base = slugify(input.name);
     let slug = base || "category";
     for (let i = 0; i < 20; i++) {
-      const exists = await this.repo.findCategoryBySlug(restaurantId, slug);
-      if (!exists) break;
+      const taken = await prisma.menuCategory.findFirst({
+        where: { restaurantId, slug, deletedAt: null },
+        select: { id: true },
+      });
+      if (!taken) break;
       slug = `${base || "category"}-${i + 2}`;
     }
-    await this.repo.createCategory(restaurantId, {
+    const created = await this.repo.createCategory(restaurantId, {
       name: input.name.trim(),
       slug,
       sortOrder: input.sortOrder ?? 0,
       colorToken: input.colorToken,
       iconKey: input.iconKey,
     });
+    console.info("[CATEGORY CREATED]", {
+      restaurantId,
+      categoryId: created.id,
+      name: created.name,
+    });
     const catalog = await this.repo.listCatalog(restaurantId);
     getRealtimeHub()?.publishStaffDataChanged(restaurantId, { domains: ["menu"] });
     return catalog;
   }
 
-  async patchCategory(restaurantId: string, categoryId: string, patch: { name?: string; sortOrder?: number }) {
+  async patchCategory(
+    restaurantId: string,
+    categoryId: string,
+    patch: { name?: string; sortOrder?: number; colorToken?: string | null; iconKey?: string | null },
+  ) {
     const c = await this.repo.findCategory(restaurantId, categoryId);
     if (!c) {
       throw ApiError.notFound("Category not found");
@@ -92,6 +106,12 @@ export class MenuService {
     }
     if (patch.sortOrder !== undefined) {
       data.sortOrder = patch.sortOrder;
+    }
+    if (patch.colorToken !== undefined) {
+      data.colorToken = patch.colorToken;
+    }
+    if (patch.iconKey !== undefined) {
+      data.iconKey = patch.iconKey;
     }
     const n = await this.repo.updateCategory(restaurantId, categoryId, data);
     if (n.count === 0) {
@@ -128,30 +148,47 @@ export class MenuService {
       modifiers?: { name: string; extraPrice: string }[];
     },
   ) {
-    const cat = await this.repo.findCategory(restaurantId, input.categoryId);
-    if (!cat) {
-      throw ApiError.badRequest("Category not found");
+    console.info("[DISH CREATE START]", { restaurantId, categoryId: input.categoryId, name: input.name });
+    try {
+      const cat = await this.repo.findCategory(restaurantId, input.categoryId);
+      if (!cat) {
+        throw ApiError.badRequest("Category not found");
+      }
+      const price = money(input.basePrice);
+      if (price.lt(money(0))) {
+        throw ApiError.badRequest("Invalid price");
+      }
+      const createdItem = await this.repo.createItem({
+        restaurantId,
+        categoryId: input.categoryId,
+        name: input.name.trim(),
+        description: (input.description ?? "").trim(),
+        basePrice: price,
+        available: input.available ?? true,
+        popular: input.popular ?? false,
+        sortOrder: input.sortOrder ?? 0,
+        imageUrl: input.imageUrl,
+        ingredients: input.ingredients,
+        modifiers: input.modifiers?.map((m) => ({ name: m.name, extraPrice: money(m.extraPrice) })),
+      });
+      console.info("[DISH CREATED]", {
+        restaurantId,
+        itemId: createdItem.id,
+        categoryId: input.categoryId,
+        name: createdItem.name,
+      });
+      const catalog = await this.repo.listCatalog(restaurantId);
+      getRealtimeHub()?.publishStaffDataChanged(restaurantId, { domains: ["menu"] });
+      return catalog;
+    } catch (e) {
+      console.info("[DISH CREATE FAILED]", {
+        restaurantId,
+        categoryId: input.categoryId,
+        name: input.name,
+        message: e instanceof Error ? e.message : String(e),
+      });
+      throw e;
     }
-    const price = money(input.basePrice);
-    if (price.lt(money(0))) {
-      throw ApiError.badRequest("Invalid price");
-    }
-    await this.repo.createItem({
-      restaurantId,
-      categoryId: input.categoryId,
-      name: input.name.trim(),
-      description: (input.description ?? "").trim(),
-      basePrice: price,
-      available: input.available ?? true,
-      popular: input.popular ?? false,
-      sortOrder: input.sortOrder ?? 0,
-      imageUrl: input.imageUrl,
-      ingredients: input.ingredients,
-      modifiers: input.modifiers?.map((m) => ({ name: m.name, extraPrice: money(m.extraPrice) })),
-    });
-    const catalog = await this.repo.listCatalog(restaurantId);
-    getRealtimeHub()?.publishStaffDataChanged(restaurantId, { domains: ["menu"] });
-    return catalog;
   }
 
   async patchItem(

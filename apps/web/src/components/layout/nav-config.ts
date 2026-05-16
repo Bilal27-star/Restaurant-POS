@@ -12,14 +12,14 @@ import {
 import { PermissionCodes } from "@pos/contracts";
 import { fr } from "@/lib/locale/fr";
 
+export type NavBadgeSource = "occupiedTables" | "dineInOpenOrders" | "takeawayOpen";
+
 export interface NavItemConfig {
   to: string;
   label: string;
   icon: LucideIcon;
-  /** Small pill on icon corner (e.g. overflow count). */
-  iconBadge?: string;
-  /** Right-aligned numeric summary (Figma trailing count). */
-  count?: string;
+  /** When set, sidebar loads count from GET /navigation/counts (hidden when 0). */
+  badgeSource?: NavBadgeSource;
   kbd?: string;
   /** If set, user must have at least one of these API permission codes to see the link. */
   anyOfPermissions?: string[];
@@ -39,16 +39,14 @@ export const navSections: NavSectionConfig[] = [
         to: "/tables",
         label: fr.nav.tables,
         icon: UtensilsCrossed,
-        iconBadge: "9+",
-        count: "12",
+        badgeSource: "occupiedTables",
         anyOfPermissions: [PermissionCodes.ORDERS_READ, PermissionCodes.TABLES_MANAGE],
       },
       {
         to: "/orders",
         label: fr.nav.ordersPos,
         icon: ClipboardList,
-        iconBadge: "8",
-        count: "8",
+        badgeSource: "dineInOpenOrders",
         anyOfPermissions: [PermissionCodes.ORDERS_READ],
       },
     ],
@@ -60,8 +58,7 @@ export const navSections: NavSectionConfig[] = [
         to: "/takeaway",
         label: fr.nav.takeaway,
         icon: ShoppingBag,
-        iconBadge: "3",
-        count: "3",
+        badgeSource: "takeawayOpen",
         anyOfPermissions: [PermissionCodes.ORDERS_READ],
       },
       {

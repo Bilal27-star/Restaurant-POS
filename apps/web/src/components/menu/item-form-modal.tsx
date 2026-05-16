@@ -47,7 +47,7 @@ export interface ItemFormModalProps {
   categories: MenuCategory[];
   item: MenuItem | null;
   defaultCategoryId: string;
-  onSave: (payload: MenuItem) => void;
+  onSave: (payload: MenuItem) => void | Promise<void>;
 }
 
 export function ItemFormModal({ open, onOpenChange, mode, categories, item, defaultCategoryId, onSave }: ItemFormModalProps) {
@@ -128,7 +128,6 @@ export function ItemFormModal({ open, onOpenChange, mode, categories, item, defa
     ev.preventDefault();
     if (!validate()) return;
     setSaving(true);
-    await new Promise((r) => setTimeout(r, 380));
     const priceDa = Number.parseInt(priceRaw.replace(/\D/g, ""), 10) || 0;
     const ingClean = ingredients
       .map((i) => ({
@@ -156,9 +155,12 @@ export function ItemFormModal({ open, onOpenChange, mode, categories, item, defa
       image: imageUrl.trim() || undefined,
       available: mode === "edit" && item ? item.available : true,
     };
-    onSave(payload);
-    setSaving(false);
-    onOpenChange(false);
+    try {
+      await onSave(payload);
+      onOpenChange(false);
+    } finally {
+      setSaving(false);
+    }
   };
 
   const title = mode === "edit" ? fr.menuItemForm.editTitle : fr.menuItemForm.addTitle;

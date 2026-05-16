@@ -1,7 +1,11 @@
 import { useQuery } from "@tanstack/react-query";
 
-import { getAccessToken, getAppApi } from "@/lib/app-api";
+import { useAuth } from "@/auth/auth-context";
+import { logDataFlow } from "@/lib/desktop/data-flow-log";
+import { getAppApi, resolvedApiOrigin } from "@/lib/app-api";
+import { posQueryRetry } from "@/lib/pos/pos-query-retry";
 import { queryKeys } from "@/lib/query-keys";
+import { ApiClientError } from "@pos/api-client";
 
 function parseActiveOrderId(tableJson: unknown): string | null {
   if (!tableJson || typeof tableJson !== "object") return null;
@@ -17,21 +21,42 @@ function parseTableNumber(tableJson: unknown): string {
   return typeof n === "string" ? n : "";
 }
 
-export function usePosTableOrderBootstrap(tableId: string | null, enabled: boolean) {
+export function usePosTableOrderBootstrap(tableId: string | null) {
+  const { accessToken, ready } = useAuth();
+  const enabled = ready && Boolean(accessToken) && Boolean(tableId);
+
   return useQuery({
     queryKey: tableId ? queryKeys.pos.tableBootstrap(tableId) : ["pos", "tableBootstrap", "none"],
+    enabled,
     queryFn: async () => {
       const tid = tableId!;
-      const table = await getAppApi().tables.get(tid);
-      const oid = parseActiveOrderId(table);
-      const label = parseTableNumber(table);
-      if (!oid) {
-        return { tableId: tid, tableLabel: label, orderJson: null as unknown | null };
+      const tableUrl = `${resolvedApiOrigin().replace(/\/$/, "")}/api/v1/tables/${tid}`;
+      logDataFlow("pos_table_bootstrap_start", { tableId: tid, url: tableUrl });
+
+      try {
+        const table = await getAppApi().tables.get(tid);
+        const oid = parseActiveOrderId(table);
+        const label = parseTableNumber(table);
+        if (!oid) {
+          logDataFlow("pos_table_bootstrap_ok", { tableId: tid, status: 200, hasOrder: false });
+          return { tableId: tid, tableLabel: label, orderJson: null as unknown | null };
+        }
+        const orderJson = await getAppApi().orders.get(oid);
+        logDataFlow("pos_table_bootstrap_ok", { tableId: tid, status: 200, hasOrder: true, orderId: oid });
+        return { tableId: tid, tableLabel: label, orderJson };
+      } catch (err) {
+        const status = err instanceof ApiClientError ? err.status : 0;
+        logDataFlow("pos_table_bootstrap_error", {
+          tableId: tid,
+          status,
+          throttled: status === 429,
+          message: err instanceof Error ? err.message : String(err),
+        });
+        throw err;
       }
-      const orderJson = await getAppApi().orders.get(oid);
-      return { tableId: tid, tableLabel: label, orderJson };
     },
-    enabled: Boolean(tableId) && enabled && Boolean(getAccessToken()),
-    staleTime: 10_000,
+    staleTime: 15_000,
+    refetchOnWindowFocus: false,
+    retry: posQueryRetry,
   });
 }

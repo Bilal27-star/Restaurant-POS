@@ -11,7 +11,11 @@ export function AppContent({ children }: AppContentProps) {
   const { pathname } = useLocation();
   const isPosOrders = pathname === "/orders" || pathname.startsWith("/orders/");
   const isMenuAdmin = pathname === "/menu";
-  const isPosLike = isPosOrders || isMenuAdmin;
+  const isTakeaway = pathname === "/takeaway" || pathname.startsWith("/takeaway/");
+  const isTables = pathname === "/tables" || pathname.startsWith("/tables/");
+  const isKitchen = pathname === "/kitchen";
+  /** Routes that fill the main column height (POS, takeaway board, tables, menu). */
+  const isFlexFill = isPosOrders || isMenuAdmin || isTakeaway || isTables || isKitchen;
   const isAnalytics = pathname === "/analytics";
   const isSettings = pathname === "/settings";
   const isDarkShell = isAnalytics || isSettings;
@@ -19,7 +23,7 @@ export function AppContent({ children }: AppContentProps) {
     <main
       className={cn(
         "min-h-0 flex-1 overscroll-contain",
-        isPosLike
+        isFlexFill
           ? "flex flex-col overflow-hidden bg-transparent p-0"
           : isDarkShell
             ? "relative z-10 overflow-y-auto bg-[#0B1120] p-4 md:p-6"
@@ -28,9 +32,9 @@ export function AppContent({ children }: AppContentProps) {
     >
       <div
         className={cn(
-          "w-full",
-          !isPosLike && "mx-auto max-w-[1600px]",
-          isPosLike && "relative z-10 flex min-h-0 flex-1 flex-col",
+          "w-full min-h-[min(50vh,28rem)]",
+          !isFlexFill && "mx-auto max-w-[1600px]",
+          isFlexFill && "relative z-10 flex min-h-[min(50vh,32rem)] flex-1 flex-col",
         )}
       >
         {children}

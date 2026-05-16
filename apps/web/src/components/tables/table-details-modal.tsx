@@ -13,7 +13,7 @@ import { fr, frGuestsLabel } from "@/lib/locale/fr";
 import { getAppApi } from "@/lib/app-api";
 import { PrinterService } from "@/lib/printing/printer-service";
 import { useTableDetailQuery } from "@/hooks/use-table-detail-query";
-import { defaultOrderLinesForDisplay, orderDisplayRef, type OrderLineItem, type RestaurantTable } from "@/components/tables/tables-demo-data";
+import { defaultOrderLinesForDisplay, orderDisplayRef, type OrderLineItem, type RestaurantTable } from "@/components/tables/table-types";
 
 const overlayClass = cn(
   "!bg-black/[0.58] backdrop-blur-xl",

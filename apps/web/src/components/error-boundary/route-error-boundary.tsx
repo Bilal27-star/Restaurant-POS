@@ -3,6 +3,7 @@ import type { ErrorInfo, ReactNode } from "react";
 import { Component } from "react";
 
 import { Button } from "@/components/ui/button";
+import { logDataFlow } from "@/lib/desktop/data-flow-log";
 import { fr } from "@/lib/locale/fr";
 
 type RouteErrorBoundaryProps = {
@@ -26,10 +27,13 @@ export class RouteErrorBoundary extends Component<RouteErrorBoundaryProps, Route
   }
 
   override componentDidCatch(error: Error, errorInfo: ErrorInfo): void {
-    if (import.meta.env.DEV) {
-      // eslint-disable-next-line no-console -- dev-only diagnostics
-      console.error("[RouteErrorBoundary]", error, errorInfo.componentStack);
-    }
+    logDataFlow("route_render_error", {
+      route: this.props.resetKey,
+      message: error.message,
+      stack: error.stack,
+      componentStack: errorInfo.componentStack,
+    });
+    console.error("[RouteErrorBoundary]", this.props.resetKey, error, errorInfo.componentStack);
   }
 
   override componentDidUpdate(prevProps: RouteErrorBoundaryProps): void {
@@ -50,6 +54,9 @@ export class RouteErrorBoundary extends Component<RouteErrorBoundaryProps, Route
           <div className="max-w-md space-y-2">
             <h2 className="text-lg font-semibold text-foreground">{fr.errorBoundary.routeTitle}</h2>
             <p className="text-sm text-muted-foreground">{fr.errorBoundary.routeDescription}</p>
+            <pre className="mt-3 max-h-32 overflow-auto rounded-lg border border-white/[0.08] bg-black/30 p-2 text-left text-xs text-muted-foreground">
+              {this.state.error.message}
+            </pre>
           </div>
           <div className="flex flex-wrap justify-center gap-2">
             <Button type="button" variant="default" className="rounded-xl" onClick={this.clear}>

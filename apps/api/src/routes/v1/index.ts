@@ -13,6 +13,7 @@ import { createPrintingRouter } from "../../modules/printing/printing.routes.js"
 import { rolesRoutes } from "../../modules/roles/roles.routes.js";
 import { createSettingsRouter } from "../../modules/settings/settings.routes.js";
 import { createShiftsRouter } from "../../modules/shifts/shifts.routes.js";
+import { createNavigationRouter } from "../../modules/navigation/navigation.routes.js";
 import { createTablesRouter } from "../../modules/tables/tables.routes.js";
 import { createUsersRouter } from "../../modules/users/users.routes.js";
 
@@ -25,6 +26,7 @@ export function buildV1Router(deps: V1RouterDeps): Router {
   const router = Router();
 
   router.use("/auth", deps.authLimiter, createAuthRouter(deps.env));
+  router.use("/navigation", createNavigationRouter(deps.env));
   router.use("/users", createUsersRouter(deps.env));
   router.use("/roles", rolesRoutes);
   router.use("/tables", createTablesRouter(deps.env));

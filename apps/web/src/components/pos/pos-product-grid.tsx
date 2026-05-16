@@ -25,23 +25,25 @@ export function PosProductGrid({
   return (
     <div className={cn("min-h-0 flex-1 overflow-y-auto px-4 py-4 md:px-6 md:py-5", className)}>
       <div className="mx-auto max-w-[960px] xl:max-w-none">
-        <section className="mb-8">
-          <div className="mb-4 flex items-center gap-2">
-            <Zap className="h-5 w-5 text-pos-neon-amber" aria-hidden />
-            <h2 className="text-lg font-semibold tracking-tight text-pos-neon-amber">Populaires</h2>
-          </div>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-2">
-            {popular.map((p) => (
-              <PosProductCard
-                key={p.id}
-                product={p}
-                onQuickAdd={onQuickAdd}
-                onCustomize={onCustomize}
-                className="min-h-[134px]"
-              />
-            ))}
-          </div>
-        </section>
+        {popular.length > 0 ? (
+          <section className="mb-8">
+            <div className="mb-4 flex items-center gap-2">
+              <Zap className="h-5 w-5 text-pos-neon-amber" aria-hidden />
+              <h2 className="text-lg font-semibold tracking-tight text-pos-neon-amber">Populaires</h2>
+            </div>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-2">
+              {popular.map((p) => (
+                <PosProductCard
+                  key={p.id}
+                  product={p}
+                  onQuickAdd={onQuickAdd}
+                  onCustomize={onCustomize}
+                  className="min-h-[134px]"
+                />
+              ))}
+            </div>
+          </section>
+        ) : null}
 
         <section>
           <div className="mb-4 flex flex-wrap items-baseline gap-2">

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -17,13 +18,14 @@ export interface CaisseRefundModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   employees: CaisseEmployee[];
-  onSubmit: (input: { amountDa: number; notes: string; attributedEmployeeId?: string }) => void;
+  onSubmit: (input: { amountDa: number; notes: string; attributedEmployeeId?: string }) => void | Promise<void>;
 }
 
 export function CaisseRefundModal({ open, onOpenChange, employees, onSubmit }: CaisseRefundModalProps) {
   const [amountRaw, setAmountRaw] = useState("");
   const [notes, setNotes] = useState("");
   const [employeeId, setEmployeeId] = useState("");
+  const [submitting, setSubmitting] = useState(false);
 
   const reset = () => {
     setAmountRaw("");
@@ -31,12 +33,17 @@ export function CaisseRefundModal({ open, onOpenChange, employees, onSubmit }: C
     setEmployeeId("");
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     const amountDa = parseDaInput(amountRaw);
-    if (!amountDa) return;
-    onSubmit({ amountDa, notes, attributedEmployeeId: employeeId || undefined });
-    reset();
-    onOpenChange(false);
+    if (!amountDa || submitting) return;
+    setSubmitting(true);
+    try {
+      await onSubmit({ amountDa, notes, attributedEmployeeId: employeeId || undefined });
+      reset();
+      onOpenChange(false);
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -95,8 +102,14 @@ export function CaisseRefundModal({ open, onOpenChange, employees, onSubmit }: C
           <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
             Annuler
           </Button>
-          <Button type="button" variant="destructive" onClick={handleSubmit} disabled={!parseDaInput(amountRaw)}>
-            Enregistrer le remboursement
+          <Button
+            type="button"
+            variant="destructive"
+            onClick={() => void handleSubmit()}
+            disabled={!parseDaInput(amountRaw) || submitting}
+          >
+            {submitting ? <Loader2 className="mr-2 size-4 animate-spin" aria-hidden /> : null}
+            {submitting ? "Enregistrement…" : "Enregistrer le remboursement"}
           </Button>
         </DialogFooter>
       </DialogContent>

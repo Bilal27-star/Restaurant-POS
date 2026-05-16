@@ -68,8 +68,8 @@ export interface CaisseEmployee {
   avatarInitials: string;
   /** Tailwind gradient classes for avatar disc */
   avatarGradient: string;
-  /** Static seed weight for demo contribution bar */
+  /** Share of shift sales attributed to this employee (0–1); from API when available */
   contributionWeight: number;
-  /** 0–100 demo score */
+  /** Performance score 0–100; from API when available */
   performanceScore: number;
 }

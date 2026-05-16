@@ -110,11 +110,11 @@ importers:
   apps/tauri-pos:
     dependencies:
       '@pos/web':
-        specifier: workspace:*
-        version: link:../web
+        specifier: file:../web
+        version: file:apps/web(@types/node@22.19.19)(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(typescript@5.9.3)(use-sync-external-store@1.6.0(react@18.3.1))
     devDependencies:
       '@pos/tsconfig':
-        specifier: workspace:*
+        specifier: file:../../packages/config/typescript
         version: link:../../packages/config/typescript
       '@tauri-apps/cli':
         specifier: ^2.1.0
@@ -132,49 +132,49 @@ importers:
         specifier: ^5.2.8
         version: 5.2.8
       '@pos/api-client':
-        specifier: workspace:*
+        specifier: file:../../packages/api-client
         version: link:../../packages/api-client
       '@pos/contracts':
-        specifier: workspace:*
+        specifier: file:../../packages/contracts
         version: link:../../packages/contracts
       '@pos/feature-analytics':
-        specifier: workspace:*
+        specifier: file:../../packages/features/analytics
         version: link:../../packages/features/analytics
       '@pos/feature-auth':
-        specifier: workspace:*
+        specifier: file:../../packages/features/auth
         version: link:../../packages/features/auth
       '@pos/feature-customers':
-        specifier: workspace:*
+        specifier: file:../../packages/features/customers
         version: link:../../packages/features/customers
       '@pos/feature-employees':
-        specifier: workspace:*
+        specifier: file:../../packages/features/employees
         version: link:../../packages/features/employees
       '@pos/feature-inventory':
-        specifier: workspace:*
+        specifier: file:../../packages/features/inventory
         version: link:../../packages/features/inventory
       '@pos/feature-kitchen':
-        specifier: workspace:*
+        specifier: file:../../packages/features/kitchen
         version: link:../../packages/features/kitchen
       '@pos/feature-orders':
-        specifier: workspace:*
+        specifier: file:../../packages/features/orders
         version: link:../../packages/features/orders
       '@pos/feature-payments':
-        specifier: workspace:*
+        specifier: file:../../packages/features/payments
         version: link:../../packages/features/payments
       '@pos/feature-settings':
-        specifier: workspace:*
+        specifier: file:../../packages/features/settings
         version: link:../../packages/features/settings
       '@pos/feature-tables':
-        specifier: workspace:*
+        specifier: file:../../packages/features/tables
         version: link:../../packages/features/tables
       '@pos/offline-engine':
-        specifier: workspace:*
+        specifier: file:../../packages/offline-engine
         version: link:../../packages/offline-engine
       '@pos/realtime-client':
-        specifier: workspace:*
+        specifier: file:../../packages/realtime-client
         version: link:../../packages/realtime-client
       '@pos/ui':
-        specifier: workspace:*
+        specifier: file:../../packages/ui
         version: link:../../packages/ui
       '@radix-ui/react-dialog':
         specifier: ^1.1.15
@@ -232,7 +232,7 @@ importers:
         version: 5.0.13(@types/react@18.3.28)(react@18.3.1)(use-sync-external-store@1.6.0(react@18.3.1))
     devDependencies:
       '@pos/tsconfig':
-        specifier: workspace:*
+        specifier: file:../../packages/config/typescript
         version: link:../../packages/config/typescript
       '@tailwindcss/vite':
         specifier: ^4.3.0
@@ -262,11 +262,11 @@ importers:
   packages/api-client:
     dependencies:
       '@pos/contracts':
-        specifier: workspace:*
+        specifier: file:../contracts
         version: link:../contracts
     devDependencies:
       '@pos/tsconfig':
-        specifier: workspace:*
+        specifier: file:../config/typescript
         version: link:../config/typescript
       typescript:
         specifier: ^5.7.2
@@ -277,7 +277,7 @@ importers:
   packages/contracts:
     devDependencies:
       '@pos/tsconfig':
-        specifier: workspace:*
+        specifier: file:../config/typescript
         version: link:../config/typescript
       typescript:
         specifier: ^5.7.2
@@ -293,7 +293,7 @@ importers:
         version: 6.19.3(typescript@5.9.3)
     devDependencies:
       '@pos/tsconfig':
-        specifier: workspace:*
+        specifier: file:../config/typescript
         version: link:../config/typescript
       '@types/bcrypt':
         specifier: ^5.0.2
@@ -311,19 +311,19 @@ importers:
   packages/features/analytics:
     dependencies:
       '@pos/api-client':
-        specifier: workspace:*
+        specifier: file:../../api-client
         version: link:../../api-client
       '@pos/contracts':
-        specifier: workspace:*
+        specifier: file:../../contracts
         version: link:../../contracts
       '@pos/offline-engine':
-        specifier: workspace:*
+        specifier: file:../../offline-engine
         version: link:../../offline-engine
       '@pos/realtime-client':
-        specifier: workspace:*
+        specifier: file:../../realtime-client
         version: link:../../realtime-client
       '@pos/ui':
-        specifier: workspace:*
+        specifier: file:../../ui
         version: link:../../ui
       react:
         specifier: ^18.3.1 || ^19.0.0
@@ -333,7 +333,7 @@ importers:
         version: 18.3.1(react@18.3.1)
     devDependencies:
       '@pos/tsconfig':
-        specifier: workspace:*
+        specifier: file:../../config/typescript
         version: link:../../config/typescript
       '@types/react':
         specifier: ^19.0.0
@@ -348,19 +348,19 @@ importers:
   packages/features/auth:
     dependencies:
       '@pos/api-client':
-        specifier: workspace:*
+        specifier: file:../../api-client
         version: link:../../api-client
       '@pos/contracts':
-        specifier: workspace:*
+        specifier: file:../../contracts
         version: link:../../contracts
       '@pos/offline-engine':
-        specifier: workspace:*
+        specifier: file:../../offline-engine
         version: link:../../offline-engine
       '@pos/realtime-client':
-        specifier: workspace:*
+        specifier: file:../../realtime-client
         version: link:../../realtime-client
       '@pos/ui':
-        specifier: workspace:*
+        specifier: file:../../ui
         version: link:../../ui
       react:
         specifier: ^18.3.1 || ^19.0.0
@@ -370,7 +370,7 @@ importers:
         version: 18.3.1(react@18.3.1)
     devDependencies:
       '@pos/tsconfig':
-        specifier: workspace:*
+        specifier: file:../../config/typescript
         version: link:../../config/typescript
       '@types/react':
         specifier: ^19.0.0
@@ -385,19 +385,19 @@ importers:
   packages/features/customers:
     dependencies:
       '@pos/api-client':
-        specifier: workspace:*
+        specifier: file:../../api-client
         version: link:../../api-client
       '@pos/contracts':
-        specifier: workspace:*
+        specifier: file:../../contracts
         version: link:../../contracts
       '@pos/offline-engine':
-        specifier: workspace:*
+        specifier: file:../../offline-engine
         version: link:../../offline-engine
       '@pos/realtime-client':
-        specifier: workspace:*
+        specifier: file:../../realtime-client
         version: link:../../realtime-client
       '@pos/ui':
-        specifier: workspace:*
+        specifier: file:../../ui
         version: link:../../ui
       react:
         specifier: ^18.3.1 || ^19.0.0
@@ -407,7 +407,7 @@ importers:
         version: 18.3.1(react@18.3.1)
     devDependencies:
       '@pos/tsconfig':
-        specifier: workspace:*
+        specifier: file:../../config/typescript
         version: link:../../config/typescript
       '@types/react':
         specifier: ^19.0.0
@@ -422,19 +422,19 @@ importers:
   packages/features/employees:
     dependencies:
       '@pos/api-client':
-        specifier: workspace:*
+        specifier: file:../../api-client
         version: link:../../api-client
       '@pos/contracts':
-        specifier: workspace:*
+        specifier: file:../../contracts
         version: link:../../contracts
       '@pos/offline-engine':
-        specifier: workspace:*
+        specifier: file:../../offline-engine
         version: link:../../offline-engine
       '@pos/realtime-client':
-        specifier: workspace:*
+        specifier: file:../../realtime-client
         version: link:../../realtime-client
       '@pos/ui':
-        specifier: workspace:*
+        specifier: file:../../ui
         version: link:../../ui
       react:
         specifier: ^18.3.1 || ^19.0.0
@@ -444,7 +444,7 @@ importers:
         version: 18.3.1(react@18.3.1)
     devDependencies:
       '@pos/tsconfig':
-        specifier: workspace:*
+        specifier: file:../../config/typescript
         version: link:../../config/typescript
       '@types/react':
         specifier: ^19.0.0
@@ -459,19 +459,19 @@ importers:
   packages/features/inventory:
     dependencies:
       '@pos/api-client':
-        specifier: workspace:*
+        specifier: file:../../api-client
         version: link:../../api-client
       '@pos/contracts':
-        specifier: workspace:*
+        specifier: file:../../contracts
         version: link:../../contracts
       '@pos/offline-engine':
-        specifier: workspace:*
+        specifier: file:../../offline-engine
         version: link:../../offline-engine
       '@pos/realtime-client':
-        specifier: workspace:*
+        specifier: file:../../realtime-client
         version: link:../../realtime-client
       '@pos/ui':
-        specifier: workspace:*
+        specifier: file:../../ui
         version: link:../../ui
       react:
         specifier: ^18.3.1 || ^19.0.0
@@ -481,7 +481,7 @@ importers:
         version: 18.3.1(react@18.3.1)
     devDependencies:
       '@pos/tsconfig':
-        specifier: workspace:*
+        specifier: file:../../config/typescript
         version: link:../../config/typescript
       '@types/react':
         specifier: ^19.0.0
@@ -496,19 +496,19 @@ importers:
   packages/features/kitchen:
     dependencies:
       '@pos/api-client':
-        specifier: workspace:*
+        specifier: file:../../api-client
         version: link:../../api-client
       '@pos/contracts':
-        specifier: workspace:*
+        specifier: file:../../contracts
         version: link:../../contracts
       '@pos/offline-engine':
-        specifier: workspace:*
+        specifier: file:../../offline-engine
         version: link:../../offline-engine
       '@pos/realtime-client':
-        specifier: workspace:*
+        specifier: file:../../realtime-client
         version: link:../../realtime-client
       '@pos/ui':
-        specifier: workspace:*
+        specifier: file:../../ui
         version: link:../../ui
       react:
         specifier: ^18.3.1 || ^19.0.0
@@ -518,7 +518,7 @@ importers:
         version: 18.3.1(react@18.3.1)
     devDependencies:
       '@pos/tsconfig':
-        specifier: workspace:*
+        specifier: file:../../config/typescript
         version: link:../../config/typescript
       '@types/react':
         specifier: ^19.0.0
@@ -533,19 +533,19 @@ importers:
   packages/features/orders:
     dependencies:
       '@pos/api-client':
-        specifier: workspace:*
+        specifier: file:../../api-client
         version: link:../../api-client
       '@pos/contracts':
-        specifier: workspace:*
+        specifier: file:../../contracts
         version: link:../../contracts
       '@pos/offline-engine':
-        specifier: workspace:*
+        specifier: file:../../offline-engine
         version: link:../../offline-engine
       '@pos/realtime-client':
-        specifier: workspace:*
+        specifier: file:../../realtime-client
         version: link:../../realtime-client
       '@pos/ui':
-        specifier: workspace:*
+        specifier: file:../../ui
         version: link:../../ui
       react:
         specifier: ^18.3.1 || ^19.0.0
@@ -555,7 +555,7 @@ importers:
         version: 18.3.1(react@18.3.1)
     devDependencies:
       '@pos/tsconfig':
-        specifier: workspace:*
+        specifier: file:../../config/typescript
         version: link:../../config/typescript
       '@types/react':
         specifier: ^19.0.0
@@ -570,19 +570,19 @@ importers:
   packages/features/payments:
     dependencies:
       '@pos/api-client':
-        specifier: workspace:*
+        specifier: file:../../api-client
         version: link:../../api-client
       '@pos/contracts':
-        specifier: workspace:*
+        specifier: file:../../contracts
         version: link:../../contracts
       '@pos/offline-engine':
-        specifier: workspace:*
+        specifier: file:../../offline-engine
         version: link:../../offline-engine
       '@pos/realtime-client':
-        specifier: workspace:*
+        specifier: file:../../realtime-client
         version: link:../../realtime-client
       '@pos/ui':
-        specifier: workspace:*
+        specifier: file:../../ui
         version: link:../../ui
       react:
         specifier: ^18.3.1 || ^19.0.0
@@ -592,7 +592,7 @@ importers:
         version: 18.3.1(react@18.3.1)
     devDependencies:
       '@pos/tsconfig':
-        specifier: workspace:*
+        specifier: file:../../config/typescript
         version: link:../../config/typescript
       '@types/react':
         specifier: ^19.0.0
@@ -607,19 +607,19 @@ importers:
   packages/features/settings:
     dependencies:
       '@pos/api-client':
-        specifier: workspace:*
+        specifier: file:../../api-client
         version: link:../../api-client
       '@pos/contracts':
-        specifier: workspace:*
+        specifier: file:../../contracts
         version: link:../../contracts
       '@pos/offline-engine':
-        specifier: workspace:*
+        specifier: file:../../offline-engine
         version: link:../../offline-engine
       '@pos/realtime-client':
-        specifier: workspace:*
+        specifier: file:../../realtime-client
         version: link:../../realtime-client
       '@pos/ui':
-        specifier: workspace:*
+        specifier: file:../../ui
         version: link:../../ui
       react:
         specifier: ^18.3.1 || ^19.0.0
@@ -629,7 +629,7 @@ importers:
         version: 18.3.1(react@18.3.1)
     devDependencies:
       '@pos/tsconfig':
-        specifier: workspace:*
+        specifier: file:../../config/typescript
         version: link:../../config/typescript
       '@types/react':
         specifier: ^19.0.0
@@ -644,19 +644,19 @@ importers:
   packages/features/tables:
     dependencies:
       '@pos/api-client':
-        specifier: workspace:*
+        specifier: file:../../api-client
         version: link:../../api-client
       '@pos/contracts':
-        specifier: workspace:*
+        specifier: file:../../contracts
         version: link:../../contracts
       '@pos/offline-engine':
-        specifier: workspace:*
+        specifier: file:../../offline-engine
         version: link:../../offline-engine
       '@pos/realtime-client':
-        specifier: workspace:*
+        specifier: file:../../realtime-client
         version: link:../../realtime-client
       '@pos/ui':
-        specifier: workspace:*
+        specifier: file:../../ui
         version: link:../../ui
       react:
         specifier: ^18.3.1 || ^19.0.0
@@ -666,7 +666,7 @@ importers:
         version: 18.3.1(react@18.3.1)
     devDependencies:
       '@pos/tsconfig':
-        specifier: workspace:*
+        specifier: file:../../config/typescript
         version: link:../../config/typescript
       '@types/react':
         specifier: ^19.0.0
@@ -681,7 +681,7 @@ importers:
   packages/offline-engine:
     devDependencies:
       '@pos/tsconfig':
-        specifier: workspace:*
+        specifier: file:../config/typescript
         version: link:../config/typescript
       typescript:
         specifier: ^5.7.2
@@ -690,11 +690,11 @@ importers:
   packages/realtime-client:
     dependencies:
       '@pos/contracts':
-        specifier: workspace:*
+        specifier: file:../contracts
         version: link:../contracts
     devDependencies:
       '@pos/tsconfig':
-        specifier: workspace:*
+        specifier: file:../config/typescript
         version: link:../config/typescript
       typescript:
         specifier: ^5.7.2
@@ -710,7 +710,7 @@ importers:
         version: 18.3.1(react@18.3.1)
     devDependencies:
       '@pos/tsconfig':
-        specifier: workspace:*
+        specifier: file:../config/typescript
         version: link:../config/typescript
       '@types/react':
         specifier: ^19.0.0
@@ -1397,6 +1397,87 @@ packages:
 
   '@pinojs/redact@0.4.0':
     resolution: {integrity: sha512-k2ENnmBugE/rzQfEcdWHcCY+/FM3VLzH9cYEsbdsoqrvzAKRhUZeRNhAZvB8OitQJ1TBed3yqWtdjzS6wJKBwg==}
+
+  '@pos/api-client@file:packages/api-client':
+    resolution: {directory: packages/api-client, type: directory}
+
+  '@pos/contracts@file:packages/contracts':
+    resolution: {directory: packages/contracts, type: directory}
+
+  '@pos/feature-analytics@file:packages/features/analytics':
+    resolution: {directory: packages/features/analytics, type: directory}
+    peerDependencies:
+      react: ^18.3.1 || ^19.0.0
+      react-dom: ^18.3.1 || ^19.0.0
+
+  '@pos/feature-auth@file:packages/features/auth':
+    resolution: {directory: packages/features/auth, type: directory}
+    peerDependencies:
+      react: ^18.3.1 || ^19.0.0
+      react-dom: ^18.3.1 || ^19.0.0
+
+  '@pos/feature-customers@file:packages/features/customers':
+    resolution: {directory: packages/features/customers, type: directory}
+    peerDependencies:
+      react: ^18.3.1 || ^19.0.0
+      react-dom: ^18.3.1 || ^19.0.0
+
+  '@pos/feature-employees@file:packages/features/employees':
+    resolution: {directory: packages/features/employees, type: directory}
+    peerDependencies:
+      react: ^18.3.1 || ^19.0.0
+      react-dom: ^18.3.1 || ^19.0.0
+
+  '@pos/feature-inventory@file:packages/features/inventory':
+    resolution: {directory: packages/features/inventory, type: directory}
+    peerDependencies:
+      react: ^18.3.1 || ^19.0.0
+      react-dom: ^18.3.1 || ^19.0.0
+
+  '@pos/feature-kitchen@file:packages/features/kitchen':
+    resolution: {directory: packages/features/kitchen, type: directory}
+    peerDependencies:
+      react: ^18.3.1 || ^19.0.0
+      react-dom: ^18.3.1 || ^19.0.0
+
+  '@pos/feature-orders@file:packages/features/orders':
+    resolution: {directory: packages/features/orders, type: directory}
+    peerDependencies:
+      react: ^18.3.1 || ^19.0.0
+      react-dom: ^18.3.1 || ^19.0.0
+
+  '@pos/feature-payments@file:packages/features/payments':
+    resolution: {directory: packages/features/payments, type: directory}
+    peerDependencies:
+      react: ^18.3.1 || ^19.0.0
+      react-dom: ^18.3.1 || ^19.0.0
+
+  '@pos/feature-settings@file:packages/features/settings':
+    resolution: {directory: packages/features/settings, type: directory}
+    peerDependencies:
+      react: ^18.3.1 || ^19.0.0
+      react-dom: ^18.3.1 || ^19.0.0
+
+  '@pos/feature-tables@file:packages/features/tables':
+    resolution: {directory: packages/features/tables, type: directory}
+    peerDependencies:
+      react: ^18.3.1 || ^19.0.0
+      react-dom: ^18.3.1 || ^19.0.0
+
+  '@pos/offline-engine@file:packages/offline-engine':
+    resolution: {directory: packages/offline-engine, type: directory}
+
+  '@pos/realtime-client@file:packages/realtime-client':
+    resolution: {directory: packages/realtime-client, type: directory}
+
+  '@pos/ui@file:packages/ui':
+    resolution: {directory: packages/ui, type: directory}
+    peerDependencies:
+      react: ^18.3.1 || ^19.0.0
+      react-dom: ^18.3.1 || ^19.0.0
+
+  '@pos/web@file:apps/web':
+    resolution: {directory: apps/web, type: directory}
 
   '@prisma/client@6.19.3':
     resolution: {integrity: sha512-mKq3jQFhjvko5LTJFHGilsuQs+W+T3Gm451NzuTDGQxwCzwXHYnIu2zGkRoW+Exq3Rob7yp2MfzSrdIiZVhrBg==}
@@ -4380,6 +4461,18 @@ snapshots:
     optionalDependencies:
       '@types/react': 18.3.28
 
+  '@base-ui/react@1.4.1(@types/react@19.2.14)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)':
+    dependencies:
+      '@babel/runtime': 7.29.2
+      '@base-ui/utils': 0.2.8(@types/react@19.2.14)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      '@floating-ui/react-dom': 2.1.8(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      '@floating-ui/utils': 0.2.11
+      react: 18.3.1
+      react-dom: 18.3.1(react@18.3.1)
+      use-sync-external-store: 1.6.0(react@18.3.1)
+    optionalDependencies:
+      '@types/react': 19.2.14
+
   '@base-ui/utils@0.2.8(@types/react@18.3.28)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)':
     dependencies:
       '@babel/runtime': 7.29.2
@@ -4390,6 +4483,17 @@ snapshots:
       use-sync-external-store: 1.6.0(react@18.3.1)
     optionalDependencies:
       '@types/react': 18.3.28
+
+  '@base-ui/utils@0.2.8(@types/react@19.2.14)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)':
+    dependencies:
+      '@babel/runtime': 7.29.2
+      '@floating-ui/utils': 0.2.11
+      react: 18.3.1
+      react-dom: 18.3.1(react@18.3.1)
+      reselect: 5.1.1
+      use-sync-external-store: 1.6.0(react@18.3.1)
+    optionalDependencies:
+      '@types/react': 19.2.14
 
   '@dotenvx/dotenvx@1.65.0':
     dependencies:
@@ -4736,6 +4840,175 @@ snapshots:
 
   '@pinojs/redact@0.4.0': {}
 
+  '@pos/api-client@file:packages/api-client':
+    dependencies:
+      '@pos/contracts': file:packages/contracts
+
+  '@pos/contracts@file:packages/contracts': {}
+
+  '@pos/feature-analytics@file:packages/features/analytics(react-dom@18.3.1(react@18.3.1))(react@18.3.1)':
+    dependencies:
+      '@pos/api-client': file:packages/api-client
+      '@pos/contracts': file:packages/contracts
+      '@pos/offline-engine': file:packages/offline-engine
+      '@pos/realtime-client': file:packages/realtime-client
+      '@pos/ui': file:packages/ui(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      react: 18.3.1
+      react-dom: 18.3.1(react@18.3.1)
+
+  '@pos/feature-auth@file:packages/features/auth(react-dom@18.3.1(react@18.3.1))(react@18.3.1)':
+    dependencies:
+      '@pos/api-client': file:packages/api-client
+      '@pos/contracts': file:packages/contracts
+      '@pos/offline-engine': file:packages/offline-engine
+      '@pos/realtime-client': file:packages/realtime-client
+      '@pos/ui': file:packages/ui(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      react: 18.3.1
+      react-dom: 18.3.1(react@18.3.1)
+
+  '@pos/feature-customers@file:packages/features/customers(react-dom@18.3.1(react@18.3.1))(react@18.3.1)':
+    dependencies:
+      '@pos/api-client': file:packages/api-client
+      '@pos/contracts': file:packages/contracts
+      '@pos/offline-engine': file:packages/offline-engine
+      '@pos/realtime-client': file:packages/realtime-client
+      '@pos/ui': file:packages/ui(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      react: 18.3.1
+      react-dom: 18.3.1(react@18.3.1)
+
+  '@pos/feature-employees@file:packages/features/employees(react-dom@18.3.1(react@18.3.1))(react@18.3.1)':
+    dependencies:
+      '@pos/api-client': file:packages/api-client
+      '@pos/contracts': file:packages/contracts
+      '@pos/offline-engine': file:packages/offline-engine
+      '@pos/realtime-client': file:packages/realtime-client
+      '@pos/ui': file:packages/ui(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      react: 18.3.1
+      react-dom: 18.3.1(react@18.3.1)
+
+  '@pos/feature-inventory@file:packages/features/inventory(react-dom@18.3.1(react@18.3.1))(react@18.3.1)':
+    dependencies:
+      '@pos/api-client': file:packages/api-client
+      '@pos/contracts': file:packages/contracts
+      '@pos/offline-engine': file:packages/offline-engine
+      '@pos/realtime-client': file:packages/realtime-client
+      '@pos/ui': file:packages/ui(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      react: 18.3.1
+      react-dom: 18.3.1(react@18.3.1)
+
+  '@pos/feature-kitchen@file:packages/features/kitchen(react-dom@18.3.1(react@18.3.1))(react@18.3.1)':
+    dependencies:
+      '@pos/api-client': file:packages/api-client
+      '@pos/contracts': file:packages/contracts
+      '@pos/offline-engine': file:packages/offline-engine
+      '@pos/realtime-client': file:packages/realtime-client
+      '@pos/ui': file:packages/ui(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      react: 18.3.1
+      react-dom: 18.3.1(react@18.3.1)
+
+  '@pos/feature-orders@file:packages/features/orders(react-dom@18.3.1(react@18.3.1))(react@18.3.1)':
+    dependencies:
+      '@pos/api-client': file:packages/api-client
+      '@pos/contracts': file:packages/contracts
+      '@pos/offline-engine': file:packages/offline-engine
+      '@pos/realtime-client': file:packages/realtime-client
+      '@pos/ui': file:packages/ui(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      react: 18.3.1
+      react-dom: 18.3.1(react@18.3.1)
+
+  '@pos/feature-payments@file:packages/features/payments(react-dom@18.3.1(react@18.3.1))(react@18.3.1)':
+    dependencies:
+      '@pos/api-client': file:packages/api-client
+      '@pos/contracts': file:packages/contracts
+      '@pos/offline-engine': file:packages/offline-engine
+      '@pos/realtime-client': file:packages/realtime-client
+      '@pos/ui': file:packages/ui(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      react: 18.3.1
+      react-dom: 18.3.1(react@18.3.1)
+
+  '@pos/feature-settings@file:packages/features/settings(react-dom@18.3.1(react@18.3.1))(react@18.3.1)':
+    dependencies:
+      '@pos/api-client': file:packages/api-client
+      '@pos/contracts': file:packages/contracts
+      '@pos/offline-engine': file:packages/offline-engine
+      '@pos/realtime-client': file:packages/realtime-client
+      '@pos/ui': file:packages/ui(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      react: 18.3.1
+      react-dom: 18.3.1(react@18.3.1)
+
+  '@pos/feature-tables@file:packages/features/tables(react-dom@18.3.1(react@18.3.1))(react@18.3.1)':
+    dependencies:
+      '@pos/api-client': file:packages/api-client
+      '@pos/contracts': file:packages/contracts
+      '@pos/offline-engine': file:packages/offline-engine
+      '@pos/realtime-client': file:packages/realtime-client
+      '@pos/ui': file:packages/ui(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      react: 18.3.1
+      react-dom: 18.3.1(react@18.3.1)
+
+  '@pos/offline-engine@file:packages/offline-engine': {}
+
+  '@pos/realtime-client@file:packages/realtime-client':
+    dependencies:
+      '@pos/contracts': file:packages/contracts
+
+  '@pos/ui@file:packages/ui(react-dom@18.3.1(react@18.3.1))(react@18.3.1)':
+    dependencies:
+      react: 18.3.1
+      react-dom: 18.3.1(react@18.3.1)
+
+  '@pos/web@file:apps/web(@types/node@22.19.19)(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(typescript@5.9.3)(use-sync-external-store@1.6.0(react@18.3.1))':
+    dependencies:
+      '@base-ui/react': 1.4.1(@types/react@19.2.14)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      '@fontsource-variable/geist': 5.2.8
+      '@pos/api-client': file:packages/api-client
+      '@pos/contracts': file:packages/contracts
+      '@pos/feature-analytics': file:packages/features/analytics(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      '@pos/feature-auth': file:packages/features/auth(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      '@pos/feature-customers': file:packages/features/customers(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      '@pos/feature-employees': file:packages/features/employees(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      '@pos/feature-inventory': file:packages/features/inventory(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      '@pos/feature-kitchen': file:packages/features/kitchen(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      '@pos/feature-orders': file:packages/features/orders(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      '@pos/feature-payments': file:packages/features/payments(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      '@pos/feature-settings': file:packages/features/settings(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      '@pos/feature-tables': file:packages/features/tables(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      '@pos/offline-engine': file:packages/offline-engine
+      '@pos/realtime-client': file:packages/realtime-client
+      '@pos/ui': file:packages/ui(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      '@radix-ui/react-dialog': 1.1.15(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      '@radix-ui/react-scroll-area': 1.2.10(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      '@radix-ui/react-separator': 1.1.8(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      '@radix-ui/react-slot': 1.2.4(@types/react@19.2.14)(react@18.3.1)
+      '@radix-ui/react-tooltip': 1.2.8(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      '@tanstack/react-query': 5.100.10(react@18.3.1)
+      '@tauri-apps/api': 2.11.0
+      class-variance-authority: 0.7.1
+      clsx: 2.1.1
+      lucide-react: 1.14.0(react@18.3.1)
+      react: 18.3.1
+      react-dom: 18.3.1(react@18.3.1)
+      react-router-dom: 6.30.3(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      shadcn: 4.7.0(@types/node@22.19.19)(typescript@5.9.3)
+      socket.io-client: 4.8.3
+      tailwind-merge: 3.6.0
+      tw-animate-css: 1.4.0
+      zustand: 5.0.13(@types/react@19.2.14)(react@18.3.1)(use-sync-external-store@1.6.0(react@18.3.1))
+    transitivePeerDependencies:
+      - '@cfworker/json-schema'
+      - '@date-fns/tz'
+      - '@types/node'
+      - '@types/react'
+      - '@types/react-dom'
+      - babel-plugin-macros
+      - bufferutil
+      - date-fns
+      - immer
+      - supports-color
+      - typescript
+      - use-sync-external-store
+      - utf-8-validate
+
   '@prisma/client@6.19.3(prisma@6.19.3(typescript@5.9.3))(typescript@5.9.3)':
     optionalDependencies:
       prisma: 6.19.3(typescript@5.9.3)
@@ -4784,17 +5057,38 @@ snapshots:
       '@types/react': 18.3.28
       '@types/react-dom': 18.3.7(@types/react@18.3.28)
 
+  '@radix-ui/react-arrow@1.1.7(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)':
+    dependencies:
+      '@radix-ui/react-primitive': 2.1.3(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      react: 18.3.1
+      react-dom: 18.3.1(react@18.3.1)
+    optionalDependencies:
+      '@types/react': 19.2.14
+      '@types/react-dom': 19.2.3(@types/react@19.2.14)
+
   '@radix-ui/react-compose-refs@1.1.2(@types/react@18.3.28)(react@18.3.1)':
     dependencies:
       react: 18.3.1
     optionalDependencies:
       '@types/react': 18.3.28
 
+  '@radix-ui/react-compose-refs@1.1.2(@types/react@19.2.14)(react@18.3.1)':
+    dependencies:
+      react: 18.3.1
+    optionalDependencies:
+      '@types/react': 19.2.14
+
   '@radix-ui/react-context@1.1.2(@types/react@18.3.28)(react@18.3.1)':
     dependencies:
       react: 18.3.1
     optionalDependencies:
       '@types/react': 18.3.28
+
+  '@radix-ui/react-context@1.1.2(@types/react@19.2.14)(react@18.3.1)':
+    dependencies:
+      react: 18.3.1
+    optionalDependencies:
+      '@types/react': 19.2.14
 
   '@radix-ui/react-dialog@1.1.15(@types/react-dom@18.3.7(@types/react@18.3.28))(@types/react@18.3.28)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)':
     dependencies:
@@ -4818,11 +5112,39 @@ snapshots:
       '@types/react': 18.3.28
       '@types/react-dom': 18.3.7(@types/react@18.3.28)
 
+  '@radix-ui/react-dialog@1.1.15(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)':
+    dependencies:
+      '@radix-ui/primitive': 1.1.3
+      '@radix-ui/react-compose-refs': 1.1.2(@types/react@19.2.14)(react@18.3.1)
+      '@radix-ui/react-context': 1.1.2(@types/react@19.2.14)(react@18.3.1)
+      '@radix-ui/react-dismissable-layer': 1.1.11(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      '@radix-ui/react-focus-guards': 1.1.3(@types/react@19.2.14)(react@18.3.1)
+      '@radix-ui/react-focus-scope': 1.1.7(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      '@radix-ui/react-id': 1.1.1(@types/react@19.2.14)(react@18.3.1)
+      '@radix-ui/react-portal': 1.1.9(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      '@radix-ui/react-presence': 1.1.5(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      '@radix-ui/react-primitive': 2.1.3(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      '@radix-ui/react-slot': 1.2.3(@types/react@19.2.14)(react@18.3.1)
+      '@radix-ui/react-use-controllable-state': 1.2.2(@types/react@19.2.14)(react@18.3.1)
+      aria-hidden: 1.2.6
+      react: 18.3.1
+      react-dom: 18.3.1(react@18.3.1)
+      react-remove-scroll: 2.7.2(@types/react@19.2.14)(react@18.3.1)
+    optionalDependencies:
+      '@types/react': 19.2.14
+      '@types/react-dom': 19.2.3(@types/react@19.2.14)
+
   '@radix-ui/react-direction@1.1.1(@types/react@18.3.28)(react@18.3.1)':
     dependencies:
       react: 18.3.1
     optionalDependencies:
       '@types/react': 18.3.28
+
+  '@radix-ui/react-direction@1.1.1(@types/react@19.2.14)(react@18.3.1)':
+    dependencies:
+      react: 18.3.1
+    optionalDependencies:
+      '@types/react': 19.2.14
 
   '@radix-ui/react-dismissable-layer@1.1.11(@types/react-dom@18.3.7(@types/react@18.3.28))(@types/react@18.3.28)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)':
     dependencies:
@@ -4837,11 +5159,30 @@ snapshots:
       '@types/react': 18.3.28
       '@types/react-dom': 18.3.7(@types/react@18.3.28)
 
+  '@radix-ui/react-dismissable-layer@1.1.11(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)':
+    dependencies:
+      '@radix-ui/primitive': 1.1.3
+      '@radix-ui/react-compose-refs': 1.1.2(@types/react@19.2.14)(react@18.3.1)
+      '@radix-ui/react-primitive': 2.1.3(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      '@radix-ui/react-use-callback-ref': 1.1.1(@types/react@19.2.14)(react@18.3.1)
+      '@radix-ui/react-use-escape-keydown': 1.1.1(@types/react@19.2.14)(react@18.3.1)
+      react: 18.3.1
+      react-dom: 18.3.1(react@18.3.1)
+    optionalDependencies:
+      '@types/react': 19.2.14
+      '@types/react-dom': 19.2.3(@types/react@19.2.14)
+
   '@radix-ui/react-focus-guards@1.1.3(@types/react@18.3.28)(react@18.3.1)':
     dependencies:
       react: 18.3.1
     optionalDependencies:
       '@types/react': 18.3.28
+
+  '@radix-ui/react-focus-guards@1.1.3(@types/react@19.2.14)(react@18.3.1)':
+    dependencies:
+      react: 18.3.1
+    optionalDependencies:
+      '@types/react': 19.2.14
 
   '@radix-ui/react-focus-scope@1.1.7(@types/react-dom@18.3.7(@types/react@18.3.28))(@types/react@18.3.28)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)':
     dependencies:
@@ -4854,12 +5195,30 @@ snapshots:
       '@types/react': 18.3.28
       '@types/react-dom': 18.3.7(@types/react@18.3.28)
 
+  '@radix-ui/react-focus-scope@1.1.7(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)':
+    dependencies:
+      '@radix-ui/react-compose-refs': 1.1.2(@types/react@19.2.14)(react@18.3.1)
+      '@radix-ui/react-primitive': 2.1.3(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      '@radix-ui/react-use-callback-ref': 1.1.1(@types/react@19.2.14)(react@18.3.1)
+      react: 18.3.1
+      react-dom: 18.3.1(react@18.3.1)
+    optionalDependencies:
+      '@types/react': 19.2.14
+      '@types/react-dom': 19.2.3(@types/react@19.2.14)
+
   '@radix-ui/react-id@1.1.1(@types/react@18.3.28)(react@18.3.1)':
     dependencies:
       '@radix-ui/react-use-layout-effect': 1.1.1(@types/react@18.3.28)(react@18.3.1)
       react: 18.3.1
     optionalDependencies:
       '@types/react': 18.3.28
+
+  '@radix-ui/react-id@1.1.1(@types/react@19.2.14)(react@18.3.1)':
+    dependencies:
+      '@radix-ui/react-use-layout-effect': 1.1.1(@types/react@19.2.14)(react@18.3.1)
+      react: 18.3.1
+    optionalDependencies:
+      '@types/react': 19.2.14
 
   '@radix-ui/react-popper@1.2.8(@types/react-dom@18.3.7(@types/react@18.3.28))(@types/react@18.3.28)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)':
     dependencies:
@@ -4879,6 +5238,24 @@ snapshots:
       '@types/react': 18.3.28
       '@types/react-dom': 18.3.7(@types/react@18.3.28)
 
+  '@radix-ui/react-popper@1.2.8(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)':
+    dependencies:
+      '@floating-ui/react-dom': 2.1.8(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      '@radix-ui/react-arrow': 1.1.7(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      '@radix-ui/react-compose-refs': 1.1.2(@types/react@19.2.14)(react@18.3.1)
+      '@radix-ui/react-context': 1.1.2(@types/react@19.2.14)(react@18.3.1)
+      '@radix-ui/react-primitive': 2.1.3(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      '@radix-ui/react-use-callback-ref': 1.1.1(@types/react@19.2.14)(react@18.3.1)
+      '@radix-ui/react-use-layout-effect': 1.1.1(@types/react@19.2.14)(react@18.3.1)
+      '@radix-ui/react-use-rect': 1.1.1(@types/react@19.2.14)(react@18.3.1)
+      '@radix-ui/react-use-size': 1.1.1(@types/react@19.2.14)(react@18.3.1)
+      '@radix-ui/rect': 1.1.1
+      react: 18.3.1
+      react-dom: 18.3.1(react@18.3.1)
+    optionalDependencies:
+      '@types/react': 19.2.14
+      '@types/react-dom': 19.2.3(@types/react@19.2.14)
+
   '@radix-ui/react-portal@1.1.9(@types/react-dom@18.3.7(@types/react@18.3.28))(@types/react@18.3.28)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)':
     dependencies:
       '@radix-ui/react-primitive': 2.1.3(@types/react-dom@18.3.7(@types/react@18.3.28))(@types/react@18.3.28)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
@@ -4888,6 +5265,16 @@ snapshots:
     optionalDependencies:
       '@types/react': 18.3.28
       '@types/react-dom': 18.3.7(@types/react@18.3.28)
+
+  '@radix-ui/react-portal@1.1.9(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)':
+    dependencies:
+      '@radix-ui/react-primitive': 2.1.3(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      '@radix-ui/react-use-layout-effect': 1.1.1(@types/react@19.2.14)(react@18.3.1)
+      react: 18.3.1
+      react-dom: 18.3.1(react@18.3.1)
+    optionalDependencies:
+      '@types/react': 19.2.14
+      '@types/react-dom': 19.2.3(@types/react@19.2.14)
 
   '@radix-ui/react-presence@1.1.5(@types/react-dom@18.3.7(@types/react@18.3.28))(@types/react@18.3.28)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)':
     dependencies:
@@ -4899,6 +5286,16 @@ snapshots:
       '@types/react': 18.3.28
       '@types/react-dom': 18.3.7(@types/react@18.3.28)
 
+  '@radix-ui/react-presence@1.1.5(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)':
+    dependencies:
+      '@radix-ui/react-compose-refs': 1.1.2(@types/react@19.2.14)(react@18.3.1)
+      '@radix-ui/react-use-layout-effect': 1.1.1(@types/react@19.2.14)(react@18.3.1)
+      react: 18.3.1
+      react-dom: 18.3.1(react@18.3.1)
+    optionalDependencies:
+      '@types/react': 19.2.14
+      '@types/react-dom': 19.2.3(@types/react@19.2.14)
+
   '@radix-ui/react-primitive@2.1.3(@types/react-dom@18.3.7(@types/react@18.3.28))(@types/react@18.3.28)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)':
     dependencies:
       '@radix-ui/react-slot': 1.2.3(@types/react@18.3.28)(react@18.3.1)
@@ -4908,6 +5305,15 @@ snapshots:
       '@types/react': 18.3.28
       '@types/react-dom': 18.3.7(@types/react@18.3.28)
 
+  '@radix-ui/react-primitive@2.1.3(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)':
+    dependencies:
+      '@radix-ui/react-slot': 1.2.3(@types/react@19.2.14)(react@18.3.1)
+      react: 18.3.1
+      react-dom: 18.3.1(react@18.3.1)
+    optionalDependencies:
+      '@types/react': 19.2.14
+      '@types/react-dom': 19.2.3(@types/react@19.2.14)
+
   '@radix-ui/react-primitive@2.1.4(@types/react-dom@18.3.7(@types/react@18.3.28))(@types/react@18.3.28)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)':
     dependencies:
       '@radix-ui/react-slot': 1.2.4(@types/react@18.3.28)(react@18.3.1)
@@ -4916,6 +5322,15 @@ snapshots:
     optionalDependencies:
       '@types/react': 18.3.28
       '@types/react-dom': 18.3.7(@types/react@18.3.28)
+
+  '@radix-ui/react-primitive@2.1.4(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)':
+    dependencies:
+      '@radix-ui/react-slot': 1.2.4(@types/react@19.2.14)(react@18.3.1)
+      react: 18.3.1
+      react-dom: 18.3.1(react@18.3.1)
+    optionalDependencies:
+      '@types/react': 19.2.14
+      '@types/react-dom': 19.2.3(@types/react@19.2.14)
 
   '@radix-ui/react-scroll-area@1.2.10(@types/react-dom@18.3.7(@types/react@18.3.28))(@types/react@18.3.28)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)':
     dependencies:
@@ -4934,6 +5349,23 @@ snapshots:
       '@types/react': 18.3.28
       '@types/react-dom': 18.3.7(@types/react@18.3.28)
 
+  '@radix-ui/react-scroll-area@1.2.10(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)':
+    dependencies:
+      '@radix-ui/number': 1.1.1
+      '@radix-ui/primitive': 1.1.3
+      '@radix-ui/react-compose-refs': 1.1.2(@types/react@19.2.14)(react@18.3.1)
+      '@radix-ui/react-context': 1.1.2(@types/react@19.2.14)(react@18.3.1)
+      '@radix-ui/react-direction': 1.1.1(@types/react@19.2.14)(react@18.3.1)
+      '@radix-ui/react-presence': 1.1.5(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      '@radix-ui/react-primitive': 2.1.3(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      '@radix-ui/react-use-callback-ref': 1.1.1(@types/react@19.2.14)(react@18.3.1)
+      '@radix-ui/react-use-layout-effect': 1.1.1(@types/react@19.2.14)(react@18.3.1)
+      react: 18.3.1
+      react-dom: 18.3.1(react@18.3.1)
+    optionalDependencies:
+      '@types/react': 19.2.14
+      '@types/react-dom': 19.2.3(@types/react@19.2.14)
+
   '@radix-ui/react-separator@1.1.8(@types/react-dom@18.3.7(@types/react@18.3.28))(@types/react@18.3.28)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)':
     dependencies:
       '@radix-ui/react-primitive': 2.1.4(@types/react-dom@18.3.7(@types/react@18.3.28))(@types/react@18.3.28)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
@@ -4943,6 +5375,15 @@ snapshots:
       '@types/react': 18.3.28
       '@types/react-dom': 18.3.7(@types/react@18.3.28)
 
+  '@radix-ui/react-separator@1.1.8(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)':
+    dependencies:
+      '@radix-ui/react-primitive': 2.1.4(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      react: 18.3.1
+      react-dom: 18.3.1(react@18.3.1)
+    optionalDependencies:
+      '@types/react': 19.2.14
+      '@types/react-dom': 19.2.3(@types/react@19.2.14)
+
   '@radix-ui/react-slot@1.2.3(@types/react@18.3.28)(react@18.3.1)':
     dependencies:
       '@radix-ui/react-compose-refs': 1.1.2(@types/react@18.3.28)(react@18.3.1)
@@ -4950,12 +5391,26 @@ snapshots:
     optionalDependencies:
       '@types/react': 18.3.28
 
+  '@radix-ui/react-slot@1.2.3(@types/react@19.2.14)(react@18.3.1)':
+    dependencies:
+      '@radix-ui/react-compose-refs': 1.1.2(@types/react@19.2.14)(react@18.3.1)
+      react: 18.3.1
+    optionalDependencies:
+      '@types/react': 19.2.14
+
   '@radix-ui/react-slot@1.2.4(@types/react@18.3.28)(react@18.3.1)':
     dependencies:
       '@radix-ui/react-compose-refs': 1.1.2(@types/react@18.3.28)(react@18.3.1)
       react: 18.3.1
     optionalDependencies:
       '@types/react': 18.3.28
+
+  '@radix-ui/react-slot@1.2.4(@types/react@19.2.14)(react@18.3.1)':
+    dependencies:
+      '@radix-ui/react-compose-refs': 1.1.2(@types/react@19.2.14)(react@18.3.1)
+      react: 18.3.1
+    optionalDependencies:
+      '@types/react': 19.2.14
 
   '@radix-ui/react-tooltip@1.2.8(@types/react-dom@18.3.7(@types/react@18.3.28))(@types/react@18.3.28)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)':
     dependencies:
@@ -4977,11 +5432,37 @@ snapshots:
       '@types/react': 18.3.28
       '@types/react-dom': 18.3.7(@types/react@18.3.28)
 
+  '@radix-ui/react-tooltip@1.2.8(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)':
+    dependencies:
+      '@radix-ui/primitive': 1.1.3
+      '@radix-ui/react-compose-refs': 1.1.2(@types/react@19.2.14)(react@18.3.1)
+      '@radix-ui/react-context': 1.1.2(@types/react@19.2.14)(react@18.3.1)
+      '@radix-ui/react-dismissable-layer': 1.1.11(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      '@radix-ui/react-id': 1.1.1(@types/react@19.2.14)(react@18.3.1)
+      '@radix-ui/react-popper': 1.2.8(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      '@radix-ui/react-portal': 1.1.9(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      '@radix-ui/react-presence': 1.1.5(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      '@radix-ui/react-primitive': 2.1.3(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      '@radix-ui/react-slot': 1.2.3(@types/react@19.2.14)(react@18.3.1)
+      '@radix-ui/react-use-controllable-state': 1.2.2(@types/react@19.2.14)(react@18.3.1)
+      '@radix-ui/react-visually-hidden': 1.2.3(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      react: 18.3.1
+      react-dom: 18.3.1(react@18.3.1)
+    optionalDependencies:
+      '@types/react': 19.2.14
+      '@types/react-dom': 19.2.3(@types/react@19.2.14)
+
   '@radix-ui/react-use-callback-ref@1.1.1(@types/react@18.3.28)(react@18.3.1)':
     dependencies:
       react: 18.3.1
     optionalDependencies:
       '@types/react': 18.3.28
+
+  '@radix-ui/react-use-callback-ref@1.1.1(@types/react@19.2.14)(react@18.3.1)':
+    dependencies:
+      react: 18.3.1
+    optionalDependencies:
+      '@types/react': 19.2.14
 
   '@radix-ui/react-use-controllable-state@1.2.2(@types/react@18.3.28)(react@18.3.1)':
     dependencies:
@@ -4991,12 +5472,27 @@ snapshots:
     optionalDependencies:
       '@types/react': 18.3.28
 
+  '@radix-ui/react-use-controllable-state@1.2.2(@types/react@19.2.14)(react@18.3.1)':
+    dependencies:
+      '@radix-ui/react-use-effect-event': 0.0.2(@types/react@19.2.14)(react@18.3.1)
+      '@radix-ui/react-use-layout-effect': 1.1.1(@types/react@19.2.14)(react@18.3.1)
+      react: 18.3.1
+    optionalDependencies:
+      '@types/react': 19.2.14
+
   '@radix-ui/react-use-effect-event@0.0.2(@types/react@18.3.28)(react@18.3.1)':
     dependencies:
       '@radix-ui/react-use-layout-effect': 1.1.1(@types/react@18.3.28)(react@18.3.1)
       react: 18.3.1
     optionalDependencies:
       '@types/react': 18.3.28
+
+  '@radix-ui/react-use-effect-event@0.0.2(@types/react@19.2.14)(react@18.3.1)':
+    dependencies:
+      '@radix-ui/react-use-layout-effect': 1.1.1(@types/react@19.2.14)(react@18.3.1)
+      react: 18.3.1
+    optionalDependencies:
+      '@types/react': 19.2.14
 
   '@radix-ui/react-use-escape-keydown@1.1.1(@types/react@18.3.28)(react@18.3.1)':
     dependencies:
@@ -5005,11 +5501,24 @@ snapshots:
     optionalDependencies:
       '@types/react': 18.3.28
 
+  '@radix-ui/react-use-escape-keydown@1.1.1(@types/react@19.2.14)(react@18.3.1)':
+    dependencies:
+      '@radix-ui/react-use-callback-ref': 1.1.1(@types/react@19.2.14)(react@18.3.1)
+      react: 18.3.1
+    optionalDependencies:
+      '@types/react': 19.2.14
+
   '@radix-ui/react-use-layout-effect@1.1.1(@types/react@18.3.28)(react@18.3.1)':
     dependencies:
       react: 18.3.1
     optionalDependencies:
       '@types/react': 18.3.28
+
+  '@radix-ui/react-use-layout-effect@1.1.1(@types/react@19.2.14)(react@18.3.1)':
+    dependencies:
+      react: 18.3.1
+    optionalDependencies:
+      '@types/react': 19.2.14
 
   '@radix-ui/react-use-rect@1.1.1(@types/react@18.3.28)(react@18.3.1)':
     dependencies:
@@ -5018,12 +5527,26 @@ snapshots:
     optionalDependencies:
       '@types/react': 18.3.28
 
+  '@radix-ui/react-use-rect@1.1.1(@types/react@19.2.14)(react@18.3.1)':
+    dependencies:
+      '@radix-ui/rect': 1.1.1
+      react: 18.3.1
+    optionalDependencies:
+      '@types/react': 19.2.14
+
   '@radix-ui/react-use-size@1.1.1(@types/react@18.3.28)(react@18.3.1)':
     dependencies:
       '@radix-ui/react-use-layout-effect': 1.1.1(@types/react@18.3.28)(react@18.3.1)
       react: 18.3.1
     optionalDependencies:
       '@types/react': 18.3.28
+
+  '@radix-ui/react-use-size@1.1.1(@types/react@19.2.14)(react@18.3.1)':
+    dependencies:
+      '@radix-ui/react-use-layout-effect': 1.1.1(@types/react@19.2.14)(react@18.3.1)
+      react: 18.3.1
+    optionalDependencies:
+      '@types/react': 19.2.14
 
   '@radix-ui/react-visually-hidden@1.2.3(@types/react-dom@18.3.7(@types/react@18.3.28))(@types/react@18.3.28)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)':
     dependencies:
@@ -5033,6 +5556,15 @@ snapshots:
     optionalDependencies:
       '@types/react': 18.3.28
       '@types/react-dom': 18.3.7(@types/react@18.3.28)
+
+  '@radix-ui/react-visually-hidden@1.2.3(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)':
+    dependencies:
+      '@radix-ui/react-primitive': 2.1.3(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      react: 18.3.1
+      react-dom: 18.3.1(react@18.3.1)
+    optionalDependencies:
+      '@types/react': 19.2.14
+      '@types/react-dom': 19.2.3(@types/react@19.2.14)
 
   '@radix-ui/rect@1.1.1': {}
 
@@ -6843,6 +7375,14 @@ snapshots:
     optionalDependencies:
       '@types/react': 18.3.28
 
+  react-remove-scroll-bar@2.3.8(@types/react@19.2.14)(react@18.3.1):
+    dependencies:
+      react: 18.3.1
+      react-style-singleton: 2.2.3(@types/react@19.2.14)(react@18.3.1)
+      tslib: 2.8.1
+    optionalDependencies:
+      '@types/react': 19.2.14
+
   react-remove-scroll@2.7.2(@types/react@18.3.28)(react@18.3.1):
     dependencies:
       react: 18.3.1
@@ -6853,6 +7393,17 @@ snapshots:
       use-sidecar: 1.1.3(@types/react@18.3.28)(react@18.3.1)
     optionalDependencies:
       '@types/react': 18.3.28
+
+  react-remove-scroll@2.7.2(@types/react@19.2.14)(react@18.3.1):
+    dependencies:
+      react: 18.3.1
+      react-remove-scroll-bar: 2.3.8(@types/react@19.2.14)(react@18.3.1)
+      react-style-singleton: 2.2.3(@types/react@19.2.14)(react@18.3.1)
+      tslib: 2.8.1
+      use-callback-ref: 1.3.3(@types/react@19.2.14)(react@18.3.1)
+      use-sidecar: 1.1.3(@types/react@19.2.14)(react@18.3.1)
+    optionalDependencies:
+      '@types/react': 19.2.14
 
   react-router-dom@6.30.3(react-dom@18.3.1(react@18.3.1))(react@18.3.1):
     dependencies:
@@ -6873,6 +7424,14 @@ snapshots:
       tslib: 2.8.1
     optionalDependencies:
       '@types/react': 18.3.28
+
+  react-style-singleton@2.2.3(@types/react@19.2.14)(react@18.3.1):
+    dependencies:
+      get-nonce: 1.0.1
+      react: 18.3.1
+      tslib: 2.8.1
+    optionalDependencies:
+      '@types/react': 19.2.14
 
   react@18.3.1:
     dependencies:
@@ -7324,6 +7883,13 @@ snapshots:
     optionalDependencies:
       '@types/react': 18.3.28
 
+  use-callback-ref@1.3.3(@types/react@19.2.14)(react@18.3.1):
+    dependencies:
+      react: 18.3.1
+      tslib: 2.8.1
+    optionalDependencies:
+      '@types/react': 19.2.14
+
   use-sidecar@1.1.3(@types/react@18.3.28)(react@18.3.1):
     dependencies:
       detect-node-es: 1.1.0
@@ -7331,6 +7897,14 @@ snapshots:
       tslib: 2.8.1
     optionalDependencies:
       '@types/react': 18.3.28
+
+  use-sidecar@1.1.3(@types/react@19.2.14)(react@18.3.1):
+    dependencies:
+      detect-node-es: 1.1.0
+      react: 18.3.1
+      tslib: 2.8.1
+    optionalDependencies:
+      '@types/react': 19.2.14
 
   use-sync-external-store@1.6.0(react@18.3.1):
     dependencies:
@@ -7432,5 +8006,11 @@ snapshots:
   zustand@5.0.13(@types/react@18.3.28)(react@18.3.1)(use-sync-external-store@1.6.0(react@18.3.1)):
     optionalDependencies:
       '@types/react': 18.3.28
+      react: 18.3.1
+      use-sync-external-store: 1.6.0(react@18.3.1)
+
+  zustand@5.0.13(@types/react@19.2.14)(react@18.3.1)(use-sync-external-store@1.6.0(react@18.3.1)):
+    optionalDependencies:
+      '@types/react': 19.2.14
       react: 18.3.1
       use-sync-external-store: 1.6.0(react@18.3.1)

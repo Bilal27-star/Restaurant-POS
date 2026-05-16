@@ -6,8 +6,8 @@
   "build": {
     "frontendDist": "../../web/dist",
     "devUrl": "http://localhost:5173",
-    "beforeDevCommand": "pnpm --filter @pos/web dev",
-    "beforeBuildCommand": "pnpm --filter @pos/api run build && node scripts/package-bundled-backend.mjs && pnpm --filter @pos/web build"
+    "beforeDevCommand": "node scripts/ensure-bundled-backend-dev.mjs && pnpm --filter @pos/web dev",
+    "beforeBuildCommand": "node scripts/validate-tauri-config.mjs && pnpm --filter @pos/api run build && node scripts/package-bundled-backend.mjs && pnpm --filter @pos/web build"
   },
   "app": {
     "windows": [
@@ -43,7 +43,7 @@
     "copyright": "Copyright © Restaurant POS",
     "category": "Business",
     "shortDescription": "Restaurant point of sale for dine-in, takeaway, and payments.",
-    "longDescription": "Installable desktop POS with offline-first web client, local thermal printing, and production bundling for Windows and macOS.",
+    "longDescription": "Installable desktop POS with offline-first web client, local thermal printing, and a self-contained Node API bundle (no monorepo at runtime). Installers include embedded PostgreSQL, Prisma migrations, and structured app-data directories for logs, sync, and offline queues on Windows and macOS.",
     "windows": {
       "nsis": {
         "installMode": "currentUser",

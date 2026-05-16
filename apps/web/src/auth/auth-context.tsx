@@ -1,7 +1,8 @@
 import type { LoginRequest } from "@pos/api-client";
 import * as React from "react";
 
-import { getAccessToken, getAppApi, resetAppApiClient, setAccessToken } from "@/lib/app-api";
+import { ensureDesktopBackendReady, getAccessToken, getAppApi, resetAppApiClient, setAccessToken } from "@/lib/app-api";
+import { clearAppQueryCache } from "@/lib/app-query-client";
 
 export type AuthUser = {
   id: string;
@@ -39,6 +40,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     let cancelled = false;
     void (async () => {
       try {
+        await ensureDesktopBackendReady();
+        if (cancelled) return;
         const m = await getAppApi().auth.me();
         if (!cancelled) {
           setUser(m.user as AuthUser);
@@ -58,6 +61,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [ready]);
 
   const login = React.useCallback(async (body: LoginRequest) => {
+    clearAppQueryCache();
     const res = await getAppApi().auth.login(body);
     setAccessToken(res.accessToken);
     resetAppApiClient();
@@ -71,6 +75,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } catch {
       /* ignore network errors on logout */
     }
+    clearAppQueryCache();
     setAccessToken(null);
     resetAppApiClient();
     setAccess(null);

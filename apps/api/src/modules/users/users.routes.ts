@@ -6,9 +6,11 @@ import { sendSuccess } from "../../core/http/response.js";
 import { asyncHandler } from "../../core/http/asyncHandler.js";
 import { createRequireAuth, createRequirePermission } from "../../middleware/requireAuth.js";
 import { prisma } from "../../prisma/index.js";
+import { validateRequest } from "../../validators/validateRequest.js";
 import { UsersRepository } from "./users.repository.js";
 import { UsersService } from "./users.service.js";
 import { UsersController } from "./users.controller.js";
+import { createUserBody, patchUserBody, userIdParams } from "./users.validation.js";
 
 export function createUsersRouter(env: Env): Router {
   const router = Router();
@@ -62,9 +64,16 @@ export function createUsersRouter(env: Env): Router {
     }),
   );
 
-  router.post("/", requireAuth, requireUsersManage, controller.create);
-  router.patch("/:userId", requireAuth, requireUsersManage, controller.patch);
-  router.delete("/:userId", requireAuth, requireUsersManage, controller.delete);
+  router.post("/", requireAuth, requireUsersManage, validateRequest("body", createUserBody), controller.create);
+  router.patch(
+    "/:userId",
+    requireAuth,
+    requireUsersManage,
+    validateRequest("params", userIdParams),
+    validateRequest("body", patchUserBody),
+    controller.patch,
+  );
+  router.delete("/:userId", requireAuth, requireUsersManage, validateRequest("params", userIdParams), controller.delete);
 
   return router;
 }

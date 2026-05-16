@@ -29,7 +29,11 @@ import {
   computeShiftDrawerMetrics,
   useCaisseStore,
 } from "@/components/caisse/caisse-store";
-import { useCaisseTakeawaySync } from "@/components/caisse/use-caisse-takeaway-sync";
+import { useUsersQuery, useUserMutations } from "@/hooks/use-users-queries";
+import {
+  buildUserCreateBody,
+  mapApiUserToCaisseEmployee,
+} from "@/lib/users/user-form-utils";
 import { formatDa } from "@/components/pos/pos-customization-pricing";
 import { useLiveNow } from "@/components/takeaway/use-takeaway-orders";
 import {
@@ -40,6 +44,9 @@ import {
   useShiftRefundMutation,
   useExpenseCategoriesQuery,
 } from "@/hooks/use-caisse-queries";
+import { PageQueryState } from "@/components/data/page-query-state";
+import { PageShell } from "@/components/data/page-shell";
+import { usePageRouteDiagnostics } from "@/hooks/use-page-route-diagnostics";
 import { fr } from "@/lib/locale/fr";
 import { cn } from "@/lib/utils";
 
@@ -206,7 +213,7 @@ function LedgerTableSection({
   employees,
   txnSearch,
   setTxnSearch,
-  onReprintDemo,
+  onReprintReceipt,
   lockedWithoutShift,
 }: {
   filteredRows: FinancialTransaction[];
@@ -214,7 +221,7 @@ function LedgerTableSection({
   employees: { id: string; name: string }[];
   txnSearch: string;
   setTxnSearch: (v: string) => void;
-  onReprintDemo: (id: string) => void;
+  onReprintReceipt: (id: string) => void;
   lockedWithoutShift: boolean;
 }) {
   return (
@@ -329,7 +336,7 @@ function LedgerTableSection({
                           variant="ghost"
                           size="sm"
                           className="text-muted-foreground hover:text-foreground"
-                          onClick={() => onReprintDemo(t.id.slice(0, 8))}
+                          onClick={() => onReprintReceipt(t.id.slice(0, 8))}
                         >
                           Réimprimer
                         </Button>
@@ -347,14 +354,20 @@ function LedgerTableSection({
 }
 
 export function CaissePage() {
+  usePageRouteDiagnostics("caisse");
   const nowMs = useLiveNow(1000);
   const activeShift = useCaisseStore((s) => s.activeShift);
   const lastClosedShift = useCaisseStore((s) => s.lastClosedShift);
   const transactions = useCaisseStore((s) => s.transactions);
-  const employees = useCaisseStore((s) => s.employees);
-  const openShiftLocal = useCaisseStore((s) => s.openShift);
   const closeShiftLocal = useCaisseStore((s) => s.closeShift);
   const hydrateFromApi = useCaisseStore((s) => s.hydrateFromApi);
+
+  const usersQuery = useUsersQuery();
+  const { createUser } = useUserMutations();
+  const staffEmployees = useMemo(
+    () => (usersQuery.data ?? []).map((u) => mapApiUserToCaisseEmployee(u)),
+    [usersQuery.data],
+  );
 
   const activeShiftQuery = useActiveShiftQuery();
   const openShiftMutation = useOpenShiftMutation();
@@ -377,11 +390,6 @@ export function CaissePage() {
   }, [activeShiftQuery.data, hydrateFromApi]);
 
   const dismissLastClosedShift = useCaisseStore((s) => s.dismissLastClosedShift);
-  const addExpenseLocal = useCaisseStore((s) => s.addExpense);
-  const addRefundLocal = useCaisseStore((s) => s.addRefund);
-  const addEmployee = useCaisseStore((s) => s.addEmployee);
-
-  useCaisseTakeawaySync(activeShift?.id ?? null);
 
   const metrics = useMemo(
     () => (activeShift ? computeShiftDrawerMetrics(activeShift, transactions) : null),
@@ -433,7 +441,18 @@ export function CaissePage() {
     window.setTimeout(() => setFeedback(null), 4000);
   };
 
+  const shiftLoading = activeShiftQuery.isLoading && !activeShiftQuery.data;
+  const shiftError = activeShiftQuery.isError;
+
   return (
+    <PageShell>
+    <PageQueryState
+      label="la caisse"
+      isLoading={shiftLoading}
+      isError={shiftError}
+      error={activeShiftQuery.error}
+      onRetry={() => void activeShiftQuery.refetch()}
+    >
     <div className="relative isolate mx-auto w-full max-w-[1360px] space-y-5 pb-12 pt-0 md:space-y-6 md:pb-16">
       <header className="border-b border-border pb-5">
         <div className="flex flex-wrap items-end justify-between gap-4">
@@ -517,7 +536,7 @@ export function CaissePage() {
                     await openShiftMutation.mutateAsync({
                       openingCashFloat: parseDaInput(openingCashRaw).toFixed(2),
                     });
-                    openShiftLocal({ cashierName: cashierName.trim(), openingCashDa: parseDaInput(openingCashRaw) });
+                    await activeShiftQuery.refetch();
                     setCashierName("");
                     setOpeningCashRaw("");
                     flashFeedback("Caisse ouverte avec succès.");
@@ -544,10 +563,10 @@ export function CaissePage() {
               <LedgerTableSection
                 filteredRows={[]}
                 activeShift={null}
-                employees={employees}
+                employees={staffEmployees}
                 txnSearch={txnSearch}
                 setTxnSearch={setTxnSearch}
-                onReprintDemo={() => flashFeedback("Ouvrez un shift pour réimprimer.")}
+                onReprintReceipt={() => flashFeedback("Ouvrez un shift pour réimprimer.")}
                 lockedWithoutShift
               />
             </div>
@@ -570,7 +589,7 @@ export function CaissePage() {
                 </ul>
               </div>
               <CaisseEmployeesPanel
-                employees={employees}
+                employees={staffEmployees}
                 shiftTotalSalesDa={0}
                 onAddEmployee={() => setAddEmployeeOpen(true)}
               />
@@ -581,7 +600,7 @@ export function CaissePage() {
                     type="button"
                     variant="outline"
                     className="h-10 w-full justify-start gap-2 px-3 text-muted-foreground"
-                    onClick={() => flashFeedback("Reçu (démo) — ouvrez un shift pour le journal complet.")}
+                    onClick={() => flashFeedback("Ouvrez un shift pour réimprimer un ticket.")}
                   >
                     <Printer className="size-4 text-caption-foreground" aria-hidden />
                     Réimprimer ticket
@@ -590,7 +609,7 @@ export function CaissePage() {
                     type="button"
                     variant="outline"
                     className="h-10 w-full justify-start gap-2 px-3 text-muted-foreground"
-                    onClick={() => flashFeedback("Tiroir (démo).")}
+                    onClick={() => flashFeedback("Ouvrez un shift pour ouvrir le tiroir-caisse.")}
                   >
                     <Wallet className="size-4 text-caption-foreground" aria-hidden />
                     Ouvrir tiroir
@@ -732,10 +751,10 @@ export function CaissePage() {
               <LedgerTableSection
                 filteredRows={filteredRows}
                 activeShift={activeShift}
-                employees={employees}
+                employees={staffEmployees}
                 txnSearch={txnSearch}
                 setTxnSearch={setTxnSearch}
-                onReprintDemo={(id) => flashFeedback(`Réimpression ${id} (démo).`)}
+                onReprintReceipt={(id) => flashFeedback(`Réimpression du ticket ${id} — bientôt disponible.`)}
                 lockedWithoutShift={false}
               />
 
@@ -792,7 +811,7 @@ export function CaissePage() {
 
             <aside className="space-y-4 xl:col-span-4">
               <CaisseEmployeesPanel
-                employees={employees}
+                employees={staffEmployees}
                 shiftTotalSalesDa={metrics.totalSalesDa}
                 onAddEmployee={() => setAddEmployeeOpen(true)}
               />
@@ -821,14 +840,14 @@ export function CaissePage() {
                         label: "Réimprimer ticket",
                         icon: Printer,
                         iconClass: "text-caption-foreground",
-                        onClick: () => flashFeedback("Reçu envoyé à l’imprimante (démo)."),
+                        onClick: () => flashFeedback("Réimpression — sélectionnez une ligne du journal."),
                       },
                       {
                         key: "drawer",
                         label: "Ouvrir tiroir",
                         icon: Wallet,
                         iconClass: "text-emerald-600",
-                        onClick: () => flashFeedback("Ouverture du tiroir demandée (démo)."),
+                        onClick: () => flashFeedback("Ouverture du tiroir — configurez l’imprimante dans Paramètres."),
                       },
                     ] as const
                   ).map((a) => (
@@ -887,10 +906,13 @@ export function CaissePage() {
                 },
               });
               closeShiftLocal(input);
+              await activeShiftQuery.refetch();
               setCloseOpen(false);
               setSummaryOpen(true);
+              flashFeedback("Shift clôturé avec succès.");
             } catch (e: any) {
               flashFeedback(e.message || "Erreur lors de la clôture du shift.");
+              throw e;
             }
           }}
         />
@@ -920,11 +942,12 @@ export function CaissePage() {
               description: input.notes,
               paymentMethod: input.paymentMethod?.toUpperCase() || "CASH",
             });
-            addExpenseLocal(input);
+            await activeShiftQuery.refetch();
             flashFeedback(fr.caissePage.expenseRecorded);
             setExpenseOpen(false);
           } catch (e: any) {
             flashFeedback(e.message || "Erreur lors de l'enregistrement de la dépense.");
+            throw e;
           }
         }}
       />
@@ -932,7 +955,7 @@ export function CaissePage() {
       <CaisseRefundModal
         open={refundOpen}
         onOpenChange={setRefundOpen}
-        employees={employees}
+        employees={staffEmployees}
         onSubmit={async (input) => {
           if (!activeShift) return;
           try {
@@ -941,11 +964,12 @@ export function CaissePage() {
               amount: input.amountDa.toFixed(2),
               notes: input.notes,
             });
-            addRefundLocal(input);
+            await activeShiftQuery.refetch();
             flashFeedback("Remboursement enregistré.");
             setRefundOpen(false);
           } catch (e: any) {
             flashFeedback(e.message || "Erreur lors du remboursement.");
+            throw e;
           }
         }}
       />
@@ -953,11 +977,20 @@ export function CaissePage() {
       <CaisseAddEmployeePanel
         open={addEmployeeOpen}
         onOpenChange={setAddEmployeeOpen}
-        onSave={(input) => {
-          addEmployee(input);
-          flashFeedback(fr.caissePage.employeeAdded);
+        onSave={async (input) => {
+          try {
+            await createUser.mutateAsync(buildUserCreateBody(input));
+            await usersQuery.refetch();
+            flashFeedback(fr.caissePage.employeeAdded);
+          } catch (e: unknown) {
+            const msg = e instanceof Error ? e.message : "Erreur lors de l'ajout du collaborateur.";
+            flashFeedback(msg);
+            throw e;
+          }
         }}
       />
     </div>
+    </PageQueryState>
+    </PageShell>
   );
 }

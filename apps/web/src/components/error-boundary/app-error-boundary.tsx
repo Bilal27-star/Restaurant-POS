@@ -3,6 +3,7 @@ import type { ErrorInfo, ReactNode } from "react";
 import { Component } from "react";
 
 import { Button } from "@/components/ui/button";
+import { logDataFlow } from "@/lib/desktop/data-flow-log";
 import { fr } from "@/lib/locale/fr";
 
 type AppErrorBoundaryProps = {
@@ -25,9 +26,12 @@ export class AppErrorBoundary extends Component<AppErrorBoundaryProps, AppErrorB
   }
 
   override componentDidCatch(error: Error, errorInfo: ErrorInfo): void {
-    if (import.meta.env.DEV) {
-      console.error("[AppErrorBoundary]", error, errorInfo.componentStack);
-    }
+    logDataFlow("app_render_error", {
+      message: error.message,
+      stack: error.stack,
+      componentStack: errorInfo.componentStack,
+    });
+    console.error("[AppErrorBoundary]", error, errorInfo.componentStack);
   }
 
   private handleRetry = (): void => {

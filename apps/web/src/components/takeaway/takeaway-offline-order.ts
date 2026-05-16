@@ -1,6 +1,6 @@
 import type { TakeawayOrderLineItem } from "./takeaway-order-types";
 
-/** Local / demo takeaway ticket shape (POS bridge + caisse sync). Not the REST `SerializedTakeawayOrder`. */
+/** Local takeaway ticket shape (POS bridge + caisse sync). Not the REST `SerializedTakeawayOrder`. */
 
 export type TakeawayOfflineStatus = "new" | "preparing" | "ready" | "delivered" | "cancelled";
 
