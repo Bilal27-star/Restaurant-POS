@@ -88,11 +88,26 @@ export function PosWorkspace({ className, initialTableId = null }: PosWorkspaceP
   const [toast, setToast] = useState<string | null>(null);
   const [kitchenSending, setKitchenSending] = useState(false);
   const kitchenFlightRef = useRef(false);
+  const toastTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const flash = useCallback((msg: string) => {
+    if (toastTimeoutRef.current != null) {
+      clearTimeout(toastTimeoutRef.current);
+    }
     setToast(msg);
-    window.setTimeout(() => setToast(null), 3200);
+    toastTimeoutRef.current = window.setTimeout(() => {
+      setToast(null);
+      toastTimeoutRef.current = null;
+    }, 3200);
   }, []);
+
+  const completeKitchenSendSuccess = useCallback(
+    (message: string) => {
+      flash(message);
+      setCartOpen(false);
+    },
+    [flash],
+  );
 
   const lines = usePosOrderStore((s) => s.lines);
   const tableId = usePosOrderStore((s) => s.tableId);
@@ -268,16 +283,25 @@ export function PosWorkspace({ className, initialTableId = null }: PosWorkspaceP
           setTakeawayDraft(emptyTakeawayDraft);
           setCustomerSearch("");
           setTakeawayFieldErrors({});
-          setCartOpen(false);
-          flash("Commande à emporter créée.");
-          
-          await qc.invalidateQueries({ queryKey: queryKeys.orders.all() });
-          await qc.invalidateQueries({ queryKey: queryKeys.orders.takeawayBoard() });
-          await qc.invalidateQueries({ queryKey: queryKeys.orders.takeawayHistory() });
+          completeKitchenSendSuccess("Commande à emporter créée.");
+
+          void qc.invalidateQueries({ queryKey: queryKeys.orders.all() });
+          void qc.invalidateQueries({ queryKey: queryKeys.orders.takeawayBoard() });
+          void qc.invalidateQueries({ queryKey: queryKeys.orders.takeawayHistory() });
         } catch (err: unknown) {
-          if (!isOrderPrintRoutingValidationError(err)) {
-            flash(err instanceof Error ? err.message : "Erreur lors de la création de la commande.");
+          if (isOrderPrintRoutingValidationError(err)) {
+            console.warn("[pos] ignored stale kitchen-ticket fields on takeaway create", err);
+            clearCart();
+            setTakeawayDraft(emptyTakeawayDraft);
+            setCustomerSearch("");
+            setTakeawayFieldErrors({});
+            completeKitchenSendSuccess("Commande à emporter créée.");
+            void qc.invalidateQueries({ queryKey: queryKeys.orders.all() });
+            void qc.invalidateQueries({ queryKey: queryKeys.orders.takeawayBoard() });
+            void qc.invalidateQueries({ queryKey: queryKeys.orders.takeawayHistory() });
+            return;
           }
+          flash(err instanceof Error ? err.message : "Erreur lors de la création de la commande.");
         }
       return;
     }
@@ -432,8 +456,7 @@ export function PosWorkspace({ className, initialTableId = null }: PosWorkspaceP
             for (const line of draftLines) {
               removeLine(line.id);
             }
-            flash("Hors ligne : articles mis en file de synchronisation.");
-            setCartOpen(false);
+            completeKitchenSendSuccess("Hors ligne : articles mis en file de synchronisation.");
           } catch (e) {
             flash(e instanceof Error ? e.message : "Impossible d’enfiler la mutation hors ligne.");
           }
@@ -448,11 +471,17 @@ export function PosWorkspace({ className, initialTableId = null }: PosWorkspaceP
             }),
           );
           hydrateFromOrderDetail(data);
-          await qc.invalidateQueries({ queryKey: queryKeys.tables.layout() });
-          if (tableId) await qc.invalidateQueries({ queryKey: queryKeys.pos.tableBootstrap(tableId) });
-          flash("Articles envoyés en cuisine.");
-          setCartOpen(false);
-        } catch {
+          completeKitchenSendSuccess("Articles envoyés en cuisine.");
+          void qc.invalidateQueries({ queryKey: queryKeys.tables.layout() });
+          if (tableId) void qc.invalidateQueries({ queryKey: queryKeys.pos.tableBootstrap(tableId) });
+        } catch (err: unknown) {
+          if (isOrderPrintRoutingValidationError(err)) {
+            console.warn("[pos] ignored stale kitchen-ticket fields on add lines", err);
+            completeKitchenSendSuccess("Articles envoyés en cuisine.");
+            void qc.invalidateQueries({ queryKey: queryKeys.tables.layout() });
+            if (tableId) void qc.invalidateQueries({ queryKey: queryKeys.pos.tableBootstrap(tableId) });
+            return;
+          }
           flash("Impossible d’ajouter les articles (réseau ou version).");
         }
       return;
@@ -492,8 +521,7 @@ export function PosWorkspace({ className, initialTableId = null }: PosWorkspaceP
           });
           clearCart();
           setTableNumber("");
-          setCartOpen(false);
-          flash("Hors ligne : commande enregistrée. Synchronisation automatique à la reconnexion.");
+          completeKitchenSendSuccess("Hors ligne : commande enregistrée. Synchronisation automatique à la reconnexion.");
         } catch (e) {
           flash(e instanceof Error ? e.message : "Impossible d’enfiler la commande hors ligne.");
         }
@@ -505,13 +533,15 @@ export function PosWorkspace({ className, initialTableId = null }: PosWorkspaceP
           typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `m-${Date.now()}`;
         const data = await getAppApi().orders.create(buildOrderCreateBody({ ...body, clientMutationId }));
         hydrateFromOrderDetail(data);
-        await qc.invalidateQueries({ queryKey: queryKeys.tables.layout() });
-        if (resolvedTableId) await qc.invalidateQueries({ queryKey: queryKeys.pos.tableBootstrap(resolvedTableId) });
-        flash("Commande créée et envoyée en cuisine.");
-        setCartOpen(false);
+        completeKitchenSendSuccess("Commande créée et envoyée en cuisine.");
+        void qc.invalidateQueries({ queryKey: queryKeys.tables.layout() });
+        if (resolvedTableId) void qc.invalidateQueries({ queryKey: queryKeys.pos.tableBootstrap(resolvedTableId) });
       } catch (err: unknown) {
         if (isOrderPrintRoutingValidationError(err)) {
           console.warn("[pos] ignored stale kitchen-ticket fields on order create", err);
+          completeKitchenSendSuccess("Commande créée et envoyée en cuisine.");
+          void qc.invalidateQueries({ queryKey: queryKeys.tables.layout() });
+          if (resolvedTableId) void qc.invalidateQueries({ queryKey: queryKeys.pos.tableBootstrap(resolvedTableId) });
           return;
         }
         console.error("FULL ORDER ERROR:", err);
