@@ -63,7 +63,7 @@ function paymentMethodLabel(m: PaymentMethod | string): string {
  */
 export class HardwarePrintOrchestrator {
   constructor(
-    private readonly printing: PrintingService,
+    readonly printing: PrintingService,
     private readonly printerRepo: PrintingRepository,
   ) {}
 

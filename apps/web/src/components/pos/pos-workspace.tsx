@@ -29,7 +29,11 @@ import { posCategoryIconFromSlug } from "./pos-category-icons";
 import { PosCategoryRail, type PosCategoryTab } from "./pos-category-rail";
 import type { PosMenuItemModalData } from "./pos-menu-item-modal";
 import { PosMenuItemModal } from "./pos-menu-item-modal";
-import { cartLinesToOrderApiLines, posCartLineToPanelItem } from "./pos-order-cart-adapter";
+import {
+  buildOrderCreateBody,
+  cartLinesToOrderApiLines,
+  posCartLineToPanelItem,
+} from "./pos-order-cart-adapter";
 import { PosOrderPanel, type PosOrderType } from "./pos-order-panel";
 import { PosProductGrid } from "./pos-product-grid";
 import type { PosProductCardModel } from "./pos-product-models";
@@ -256,14 +260,16 @@ export function PosWorkspace({ className, initialTableId = null }: PosWorkspaceP
           const clientMutationId =
             typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `m-${Date.now()}`;
           
-          await getAppApi().orders.create({
-            type: "TAKEAWAY",
-            customerId,
-            waiterId: user?.id ?? null,
-            kitchenNotes: buildTakeawayKitchenNotes(panelLines),
-            lines: apiLines,
-            clientMutationId,
-          });
+          await getAppApi().orders.create(
+            buildOrderCreateBody({
+              type: "TAKEAWAY",
+              customerId,
+              waiterId: user?.id ?? null,
+              kitchenNotes: buildTakeawayKitchenNotes(panelLines),
+              lines: apiLines,
+              clientMutationId,
+            }),
+          );
 
           clearCart();
           setTakeawayDraft(emptyTakeawayDraft);
@@ -468,13 +474,13 @@ export function PosWorkspace({ className, initialTableId = null }: PosWorkspaceP
       return;
     }
 
-    const body: any = {
+    const body = buildOrderCreateBody({
       type: "DINE_IN",
       partySize,
       lines: apiLines,
       ...(user?.id ? { waiterId: user.id } : {}),
       ...(resolvedTableId ? { tableId: resolvedTableId } : {}),
-    };
+    });
 
     if (!online && user?.restaurantId) {
       const clientMutationId =
@@ -488,7 +494,7 @@ export function PosWorkspace({ className, initialTableId = null }: PosWorkspaceP
             idempotencyKey: null,
             clientMutationId,
             baseServerVersion: null,
-            payload: { ...body, clientMutationId },
+            payload: buildOrderCreateBody({ ...body, clientMutationId }),
           });
           clearCart();
           setTableNumber("");
@@ -505,7 +511,7 @@ export function PosWorkspace({ className, initialTableId = null }: PosWorkspaceP
       try {
         const clientMutationId =
           typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `m-${Date.now()}`;
-        const data = await getAppApi().orders.create({ ...body, clientMutationId });
+        const data = await getAppApi().orders.create(buildOrderCreateBody({ ...body, clientMutationId }));
         hydrateFromOrderDetail(data);
         await qc.invalidateQueries({ queryKey: queryKeys.tables.layout() });
         if (resolvedTableId) await qc.invalidateQueries({ queryKey: queryKeys.pos.tableBootstrap(resolvedTableId) });

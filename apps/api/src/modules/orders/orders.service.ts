@@ -9,7 +9,7 @@ import type { OrderWithRelations } from "./orders.repository.js";
 import { OrdersRepository } from "./orders.repository.js";
 import { buildCustomerReceiptDto, buildKitchenTicketDto, buildTableTicketDto } from "./printing/order-print-dtos.js";
 import { serializeOrderEntity } from "./serialize-order.js";
-import type { PrintingService } from "../printing/printing.service.js";
+import type { HardwarePrintOrchestrator } from "../printing/hardware-print-orchestrator.js";
 import type { PaymentsService } from "../payments/payments.service.js";
 
 const repoErrors: Record<string, { status: number; message: string }> = {
@@ -57,7 +57,7 @@ export class OrdersService {
   constructor(
     private readonly repo: OrdersRepository,
     private readonly payments: PaymentsService,
-    private readonly printing?: PrintingService | null,
+    private readonly printing?: HardwarePrintOrchestrator | null,
   ) {}
 
   private wrap<T>(p: Promise<T>): Promise<T> {
@@ -152,7 +152,7 @@ export class OrdersService {
         lines: dto.lines,
       };
 
-      await this.printing.enqueueKitchenStationJob({
+      await this.printing.printing.enqueueKitchenStationJob({
         restaurantId,
         requestedByUserId: actorUserId,
         station,

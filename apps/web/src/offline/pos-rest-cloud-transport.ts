@@ -3,6 +3,11 @@ import { ApiClientError } from "@pos/api-client";
 import type { CloudSyncTransport } from "@pos/offline-engine";
 import type { OutboxOperation, PushBatchResult, PushOpOutcome } from "@pos/offline-engine";
 
+import {
+  buildOrderCreateBody,
+  sanitizeOrderCreatePayload,
+} from "@/components/pos/pos-order-cart-adapter";
+
 function isRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null;
 }
@@ -75,8 +80,13 @@ async function executeOne(
 
   switch (op.kind) {
     case "order.create": {
-      const body = isRecord(payload) ? { ...payload } : {};
-      body.clientMutationId = op.clientMutationId;
+      const raw = isRecord(payload) ? payload : {};
+      const body = buildOrderCreateBody(
+        sanitizeOrderCreatePayload({
+          ...raw,
+          clientMutationId: op.clientMutationId,
+        }),
+      );
       await api.orders.create(body);
       return { outcome: "accepted" };
     }
