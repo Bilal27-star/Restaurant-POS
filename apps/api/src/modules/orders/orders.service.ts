@@ -9,7 +9,7 @@ import type { OrderWithRelations } from "./orders.repository.js";
 import { OrdersRepository } from "./orders.repository.js";
 import { buildCustomerReceiptDto, buildKitchenTicketDto, buildTableTicketDto } from "./printing/order-print-dtos.js";
 import { serializeOrderEntity } from "./serialize-order.js";
-import type { HardwarePrintOrchestrator } from "../printing/hardware-print-orchestrator.js";
+import type { PrintingService } from "../printing/printing.service.js";
 import type { PaymentsService } from "../payments/payments.service.js";
 
 const repoErrors: Record<string, { status: number; message: string }> = {
@@ -35,22 +35,6 @@ const repoErrors: Record<string, { status: number; message: string }> = {
   HAS_PAYMENTS: { status: 409, message: "Cancel is blocked while payments exist; refund or void payments first" },
 };
 
-function patchTriggersKitchenTicket(patch: {
-  kitchenNotes?: unknown;
-  taxTotal?: unknown;
-  discountTotal?: unknown;
-  status?: unknown;
-  partySize?: unknown;
-}): boolean {
-  return (
-    patch.kitchenNotes !== undefined ||
-    patch.taxTotal !== undefined ||
-    patch.discountTotal !== undefined ||
-    patch.status !== undefined ||
-    patch.partySize !== undefined
-  );
-}
-
 function mapRepoError(err: unknown): never {
   if (err instanceof Error) {
     const mapped = repoErrors[err.message];
@@ -68,14 +52,114 @@ function mapRepoError(err: unknown): never {
 }
 
 export class OrdersService {
+  private readonly db = prisma;
+
   constructor(
     private readonly repo: OrdersRepository,
     private readonly payments: PaymentsService,
-    private readonly hardwarePrint?: HardwarePrintOrchestrator | null,
+    private readonly printing?: PrintingService | null,
   ) {}
 
   private wrap<T>(p: Promise<T>): Promise<T> {
     return p.catch((e) => mapRepoError(e));
+  }
+
+  private async scheduleKitchenJobsForOrder(orderId: string): Promise<void> {
+    console.log("KITCHEN SCHEDULER CALLED", { orderId });
+
+    if (!this.printing) {
+      console.log("KITCHEN JOBS GENERATED", { count: 0 });
+      return;
+    }
+
+    const order = await this.db.order.findUnique({
+      where: { id: orderId },
+      include: {
+        table: true,
+        waiter: true,
+        items: {
+          include: {
+            menuItem: true,
+          },
+        },
+      },
+    });
+
+    if (!order) {
+      console.log("KITCHEN JOBS GENERATED", { count: 0 });
+      return;
+    }
+
+    console.log(
+      "ORDER RELOADED",
+      order.items.map((line) => ({
+        item: line.menuItem?.name,
+        station: line.menuItem?.kitchenStation,
+      })),
+    );
+
+    if (order.status === "CANCELLED" || order.status === "COMPLETED") {
+      console.log("KITCHEN JOBS GENERATED", { count: 0 });
+      return;
+    }
+
+    const grouped = order.items
+      .filter((line) => line.menuItem?.kitchenStation)
+      .reduce<Partial<Record<KitchenStation, (typeof order.items)[number][]>>>((acc, line) => {
+        const station = line.menuItem!.kitchenStation!;
+        if (!acc[station]) acc[station] = [];
+        acc[station]!.push(line);
+        return acc;
+      }, {});
+
+    console.log("KITCHEN JOBS GENERATED", { count: Object.keys(grouped).length });
+
+    const restaurantId = order.restaurantId;
+    const actorUserId = order.createdByUserId ?? order.waiterId ?? null;
+    const tableNumber = order.table?.number ?? null;
+    const restaurantName = await this.repo.findRestaurantName(restaurantId);
+    const waiterName = order.waiter?.fullName?.trim() || "—";
+
+    for (const [station, lines] of Object.entries(grouped) as [KitchenStation, (typeof order.items)[number][]][]) {
+      const mappedItems = lines.map((it) => ({
+        quantity: it.quantity,
+        nameSnapshot: it.nameSnapshot,
+        kitchenNotes: it.kitchenNotes,
+        removedIngredients: it.removedIngredients,
+        modifiers: (it.modifiers ?? []).map((m) => ({ label: m.label, priceDelta: m.priceDelta })),
+      }));
+
+      const dto = buildKitchenTicketDto({
+        restaurantName,
+        orderNumber: order.orderNumber,
+        tableNumber,
+        orderType: order.type,
+        status: order.status,
+        kitchenNotes: order.kitchenNotes,
+        items: mappedItems,
+      });
+
+      const payload = {
+        kind: "KITCHEN_TICKET" as const,
+        restaurantName: dto.restaurantName,
+        orderNumber: dto.orderNumber,
+        tableNumber: dto.tableNumber ?? null,
+        orderType: dto.orderType,
+        printedAtIso: new Date().toISOString(),
+        orderKitchenNotes: dto.kitchenNotes ?? null,
+        station,
+        waiterName,
+        lines: dto.lines,
+      };
+
+      await this.printing.enqueueKitchenStationJob({
+        restaurantId,
+        requestedByUserId: actorUserId,
+        station,
+        payload,
+        itemNames: mappedItems.map((it) => it.nameSnapshot),
+      });
+    }
   }
 
   async createOrder(input: {
@@ -140,60 +224,9 @@ export class OrdersService {
         lines: input.lines,
       }),
     ).then(async ({ order: o, inserted }) => {
-      console.log("ORDER TYPE:", input.type);
-      console.log("TABLE ID:", input.tableId);
-      console.log("REACHED PRINT BLOCK");
-
-      const kitchenGroups = new Map<KitchenStation, typeof o.items>();
-
-      for (const it of o.items) {
-        if (!it.menuItemId) continue;
-        const menuItem = await prisma.menuItem.findUnique({
-          where: { id: it.menuItemId },
-          select: { kitchenStation: true },
-        });
-
-        if (!menuItem?.kitchenStation) continue;
-
-        const existing = kitchenGroups.get(menuItem.kitchenStation) ?? [];
-        existing.push(it);
-        kitchenGroups.set(menuItem.kitchenStation, existing);
-      }
-
-      for (const [station, items] of kitchenGroups) {
-        if (!station) {
-          throw new Error("Missing kitchen station");
-        }
-        if (this.hardwarePrint) {
-          await this.hardwarePrint.scheduleKitchenStationTicket(
-            o.restaurantId,
-            input.actorUserId,
-            o,
-            station,
-            items.map((it) => ({
-              quantity: it.quantity,
-              nameSnapshot: it.nameSnapshot,
-              kitchenNotes: it.kitchenNotes,
-              removedIngredients: it.removedIngredients,
-              modifiers: it.modifiers.map((m) => ({ label: m.label, priceDelta: m.priceDelta })),
-            })),
-          );
-        }
-      }
+      await this.scheduleKitchenJobsForOrder(o.id);
 
       if (inserted) {
-        // Table identification ticket — dine-in orders only, routed to receipt station.
-        if (input.type === "DINE_IN" && input.tableId) {
-          console.log("=== PRINT DEBUG START ===");
-          console.log({
-             orderType: input.type,
-             tableId: input.tableId,
-             restaurantId: input.restaurantId
-          });
-          this.hardwarePrint?.scheduleTableTicket(input.restaurantId, input.actorUserId, o);
-          console.log("PRINT FUNCTION CALLED");
-        }
-
         getRealtimeHub()?.publishOrderCreated(o);
       } else {
         getRealtimeHub()?.publishOrderUpdated(o, { op: "patch" });
@@ -286,10 +319,8 @@ export class OrdersService {
         expectedVersion: input.version,
         patch,
       }),
-    ).then((o) => {
-      if (patchTriggersKitchenTicket(input.patch)) {
-        this.hardwarePrint?.scheduleKitchenReprint(input.restaurantId, input.actorUserId, o);
-      }
+    ).then(async (o) => {
+      await this.scheduleKitchenJobsForOrder(o.id);
       getRealtimeHub()?.publishOrderUpdated(o, { op: "patch" });
       return this.serializeOrder(o);
     });
@@ -315,8 +346,8 @@ export class OrdersService {
         expectedVersion: input.version,
         lines: input.lines,
       }),
-    ).then((o) => {
-      this.hardwarePrint?.scheduleKitchenReprint(input.restaurantId, input.actorUserId, o);
+    ).then(async (o) => {
+      await this.scheduleKitchenJobsForOrder(o.id);
       getRealtimeHub()?.publishOrderUpdated(o, { op: "add_lines" });
       return this.serializeOrder(o);
     });
@@ -343,8 +374,8 @@ export class OrdersService {
         expectedVersion: input.version,
         patch: input.patch,
       }),
-    ).then((o) => {
-      this.hardwarePrint?.scheduleKitchenReprint(input.restaurantId, input.actorUserId, o);
+    ).then(async (o) => {
+      await this.scheduleKitchenJobsForOrder(o.id);
       getRealtimeHub()?.publishOrderUpdated(o, { op: "update_line" });
       return this.serializeOrder(o);
     });
@@ -364,8 +395,8 @@ export class OrdersService {
         lineId: input.lineId,
         expectedVersion: input.version,
       }),
-    ).then((o) => {
-      this.hardwarePrint?.scheduleKitchenReprint(input.restaurantId, input.actorUserId, o);
+    ).then(async (o) => {
+      await this.scheduleKitchenJobsForOrder(o.id);
       getRealtimeHub()?.publishOrderUpdated(o, { op: "delete_line" });
       return this.serializeOrder(o);
     });

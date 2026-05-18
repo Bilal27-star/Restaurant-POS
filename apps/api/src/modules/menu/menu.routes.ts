@@ -5,8 +5,11 @@ import { PermissionCodes } from "../../core/auth/permission-codes.js";
 import { createRequireActiveSession, createRequireAuth, createRequirePermission } from "../../middleware/requireAuth.js";
 import { validateRequest } from "../../validators/validateRequest.js";
 import { MenuController } from "./menu.controller.js";
+import { repairKitchenStations } from "./menu.repair.js";
 import { MenuRepository } from "./menu.repository.js";
 import { MenuService } from "./menu.service.js";
+
+let kitchenStationRepairStarted = false;
 import {
   categoryIdParams,
   createCategoryBody,
@@ -17,6 +20,13 @@ import {
 } from "./menu.validation.js";
 
 export function createMenuRouter(_env: Env): Router {
+  if (!kitchenStationRepairStarted) {
+    kitchenStationRepairStarted = true;
+    void repairKitchenStations().catch((err) => {
+      console.error("[menu] repairKitchenStations failed", err);
+    });
+  }
+
   const router = Router();
   const requireAuth = createRequireAuth(_env);
   const requireActiveSession = createRequireActiveSession();

@@ -1,14 +1,24 @@
 import { createHash } from "node:crypto";
 import fs from "node:fs";
 
-import type { PrintJobKind, PrintJobStatus, PrinterRole } from "@pos/database";
+import type { KitchenStation, PrintJobKind, PrintJobStatus, PrinterRole, RestaurantPrinter } from "@pos/database";
 
 import { ApiError } from "../../core/http/ApiError.js";
 import { renderThermalEscPos } from "../../core/printing/renderer.js";
 import type { ThermalDocument } from "../../core/printing/documents/types.js";
+import { prisma } from "../../prisma/index.js";
 import { printPayload } from "./printing.validation.js";
 import { PrintingRepository } from "./printing.repository.js";
-import { prisma } from "../../prisma/index.js";
+
+const KITCHEN_STATION_CONFIG: Record<
+  KitchenStation,
+  { name: string; host: string; port: number }
+> = {
+  PIZZA: { name: "Pizza Printer", host: "192.168.1.100", port: 9100 },
+  PLATS: { name: "Plats Printer", host: "192.168.1.101", port: 9100 },
+  SNACK: { name: "Snack Printer", host: "192.168.1.102", port: 9100 },
+  CAFETERIA: { name: "Cafeteria Printer", host: "192.168.1.103", port: 9100 },
+};
 
 function escposFingerprint(bytes: Uint8Array): { sha256: string; base64: string } {
   const buf = Buffer.from(bytes);
@@ -47,6 +57,78 @@ export class PrintingService {
     return doc as ThermalDocument;
   }
 
+  private async resolveKitchenStationPrinter(
+    restaurantId: string,
+    station: KitchenStation,
+  ): Promise<RestaurantPrinter> {
+    const cfg = KITCHEN_STATION_CONFIG[station];
+    if (!cfg) {
+      throw new Error(`Unknown kitchen station: ${station}`);
+    }
+
+    const connectionJson = { host: cfg.host, port: cfg.port };
+    const printerData = {
+      name: cfg.name,
+      role: "KITCHEN" as const,
+      kitchenStation: station,
+      driver: "NETWORK_TCP" as const,
+      connectionJson,
+      isActive: true,
+      isDefault: false,
+    };
+
+    const existingPrinter =
+      (await prisma.restaurantPrinter.findFirst({
+        where: { restaurantId, kitchenStation: station, isActive: true },
+      })) ??
+      (await prisma.restaurantPrinter.findFirst({
+        where: { restaurantId, name: cfg.name, isActive: true },
+      }));
+
+    if (existingPrinter) {
+      return prisma.restaurantPrinter.update({
+        where: { id: existingPrinter.id },
+        data: printerData,
+      });
+    }
+
+    return prisma.restaurantPrinter.create({
+      data: { restaurantId, ...printerData },
+    });
+  }
+
+  async enqueueKitchenStationJob(input: {
+    restaurantId: string;
+    requestedByUserId: string | null;
+    station: KitchenStation;
+    payload: unknown;
+    itemNames: string[];
+    priority?: number;
+  }) {
+    console.log("KITCHEN JOB CREATED", {
+      station: input.station,
+      items: input.itemNames,
+    });
+
+    const selectedPrinter = await this.resolveKitchenStationPrinter(input.restaurantId, input.station);
+
+    console.log("PRINTER RESOLUTION", {
+      kind: "KITCHEN_TICKET",
+      station: input.station,
+      printer: selectedPrinter.name,
+      connection: selectedPrinter.connectionJson,
+    });
+
+    return this.enqueueJob({
+      restaurantId: input.restaurantId,
+      requestedByUserId: input.requestedByUserId,
+      kind: "KITCHEN_TICKET",
+      payload: input.payload,
+      printerId: selectedPrinter.id,
+      priority: input.priority ?? 5,
+    });
+  }
+
   async renderEscPos(input: {
     restaurantId: string;
     kind: PrintJobKind;
@@ -65,63 +147,32 @@ export class PrintingService {
     requestedByUserId: string | null;
     kind: PrintJobKind;
     payload: unknown;
-    printerId?: string | null;
+    printerId: string;
     priority?: number;
     maxAttempts?: number;
   }) {
     const doc = this.parsePayload(input.kind, input.payload);
-    const payload = doc;
 
-    let printer = null;
-
-    if (payload.kind === "KITCHEN_TICKET") {
-      const station = (payload as any).station;
-      printer = await prisma.restaurantPrinter.findFirst({
-        where: {
-          restaurantId: input.restaurantId,
-          kitchenStation: station,
-          isActive: true,
-        },
-      });
-    } else if (payload.kind === "TABLE_TICKET") {
-      printer = await prisma.restaurantPrinter.findFirst({
-        where: {
-          restaurantId: input.restaurantId,
-          isDefault: true,
-          isActive: true,
-        },
-      });
+    if (!input.printerId) {
+      throw ApiError.badRequest("printerId is required");
     }
 
-    if (!printer && input.printerId) {
-      printer = await this.repo.findPrinter(input.restaurantId, input.printerId);
+    const selectedPrinter = await this.repo.findPrinter(input.restaurantId, input.printerId);
+    if (!selectedPrinter) {
+      throw ApiError.badRequest("Resolved printer not found");
     }
 
-    if (!printer) {
-      printer = await prisma.restaurantPrinter.findFirst({
-        where: {
-          restaurantId: input.restaurantId,
-          isDefault: true,
-          isActive: true,
-        },
-      });
-    }
+    console.log("ENQUEUE RECEIVED PRINTER", selectedPrinter.name);
 
-    console.log("PRINTER SELECTED", {
-      kind: payload.kind,
-      station: (payload as any).station,
-      printer: printer?.name,
-      connection: printer?.connectionJson
-    });
-
-    const printerId = printer?.id ?? null;
-    const width = printer?.paperWidthChars ?? await this.manager.paperWidthChars(input.restaurantId, printerId);
+    const width =
+      selectedPrinter.paperWidthChars ??
+      (await this.manager.paperWidthChars(input.restaurantId, selectedPrinter.id));
     const bytes = renderThermalEscPos(input.kind, doc, width);
     const { sha256, base64 } = escposFingerprint(bytes);
 
     const job = await this.repo.createJob({
       restaurantId: input.restaurantId,
-      printerId,
+      printerId: selectedPrinter.id,
       requestedByUserId: input.requestedByUserId,
       kind: input.kind,
       payloadJson: doc as unknown as object,
@@ -131,23 +182,19 @@ export class PrintingService {
       maxAttempts: input.maxAttempts ?? 5,
     });
 
-    // Printer execution logic after print job creation
-    const connection = (printer?.connectionJson as any) || {};
-    const transport = connection.transport || (printer?.driver === "NETWORK_TCP" ? "tcp" : "usb");
-    const driver = printer?.driver || "RAW_ESCPOS";
+    const connection = (selectedPrinter.connectionJson as Record<string, unknown>) || {};
+    const transport =
+      (connection.transport as string | undefined) ||
+      (selectedPrinter.driver === "NETWORK_TCP" ? "tcp" : "usb");
+    const driver = selectedPrinter.driver || "RAW_ESCPOS";
     const connectionJson = {
       transport,
-      ...connection
+      ...connection,
     };
 
-    console.log("PRINT EXECUTION:", {
-       printerId: printerId,
-       transport,
-       connectionJson,
-       driver
+    console.log("PRINT EXECUTION", {
+      printer: selectedPrinter.name,
     });
-
-    console.log("PRINT PAYLOAD:", doc);
 
     // Support validation for Ethernet printers
     if (transport === "tcp" || transport === "ethernet") {

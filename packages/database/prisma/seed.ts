@@ -129,143 +129,68 @@ async function seedDefaultFloorsAndTables(restaurantId: string): Promise<void> {
   }
 }
 
-async function seedDefaultMenu(restaurantId: string): Promise<void> {
-  const categories = [
-    { name: "Burgers", slug: "burgers", sortOrder: 0, colorToken: "amber" },
-    { name: "Drinks", slug: "drinks", sortOrder: 1, colorToken: "blue" },
-    { name: "Desserts", slug: "desserts", sortOrder: 2, colorToken: "pink" },
-  ];
+function resolveKitchenStationFromCategoryName(categoryName: string): KitchenStation | null {
+  const c = categoryName.toLowerCase();
 
-  const categoryMap = new Map<string, string>();
-
-  for (const cat of categories) {
-    let record = await prisma.menuCategory.findFirst({
-      where: { restaurantId, slug: cat.slug },
-    });
-    if (!record) {
-      record = await prisma.menuCategory.create({
-        data: {
-          restaurantId,
-          name: cat.name,
-          slug: cat.slug,
-          sortOrder: cat.sortOrder,
-          colorToken: cat.colorToken,
-        },
-      });
-    }
-    categoryMap.set(cat.slug, record.id);
+  if (c.includes("pizza")) {
+    return KitchenStation.PIZZA;
+  }
+  if (/\b(entrée|entree|entrées|plat|plats|poisson|paella)\b/.test(c) || c.includes("plat")) {
+    return KitchenStation.PLATS;
+  }
+  if (/\b(snack|sandwich|burger)\b/.test(c)) {
+    return KitchenStation.SNACK;
+  }
+  if (/\b(boisson|cafeteria|cafétéria|dessert|coffee|café|cafe|drink|drinks)\b/.test(c)) {
+    return KitchenStation.CAFETERIA;
   }
 
-  const burgerCatId = categoryMap.get("burgers")!;
-  const drinksCatId = categoryMap.get("drinks")!;
-  const dessertsCatId = categoryMap.get("desserts")!;
+  return null;
+}
 
-  // 1. Cheeseburger
-  const cheeseburger = await prisma.menuItem.findFirst({
-    where: { restaurantId, categoryId: burgerCatId, name: "Classic Cheeseburger" },
-  });
-  if (!cheeseburger) {
-    await prisma.menuItem.create({
-      data: {
-        restaurantId,
-        categoryId: burgerCatId,
-        name: "Classic Cheeseburger",
-        description: "Juicy beef patty with cheddar cheese, lettuce, tomato, and burger sauce.",
-        basePrice: 850.00,
-        available: true,
-        popular: true,
-        sortOrder: 0,
-        kitchenStation: "PLATS",
-        ingredients: {
-          create: [
-            { name: "Beef Patty", removable: false, sortOrder: 0 },
-            { name: "Cheddar Cheese", removable: true, sortOrder: 1 },
-            { name: "Lettuce", removable: true, sortOrder: 2 },
-            { name: "Tomato", removable: true, sortOrder: 3 },
-            { name: "Pickles", removable: true, sortOrder: 4 },
-          ]
-        },
-        modifiers: {
-          create: [
-            { name: "Extra Patty", extraPrice: 250.00, sortOrder: 0 },
-            { name: "Extra Cheese", extraPrice: 50.00, sortOrder: 1 },
-            { name: "Gluten-Free Bun", extraPrice: 100.00, sortOrder: 2 },
-          ]
-        }
-      }
-    });
+function resolveKitchenStationFromItemName(name: string): KitchenStation | null {
+  const n = name.toLowerCase();
+
+  if (n.includes("pizza") || n.includes("mergue")) {
+    return KitchenStation.PIZZA;
+  }
+  if (n.includes("salade") || /\b(fish|paella|plat|plats|entrée|entree)\b/.test(n)) {
+    return KitchenStation.PLATS;
+  }
+  if (/\b(sandwich|burger|snack|taco)\b/.test(n)) {
+    return KitchenStation.SNACK;
+  }
+  if (n.includes("jus") || /\b(drink|drinks|coca|cola|coffee|dessert|boisson)\b/.test(n)) {
+    return KitchenStation.CAFETERIA;
   }
 
-  // 2. Pizza Margherita
-  const pizzaMargherita = await prisma.menuItem.findFirst({
-    where: { restaurantId, name: "Pizza Margherita" },
-  });
-  if (!pizzaMargherita) {
-    await prisma.menuItem.create({
-      data: {
-        restaurantId,
-        categoryId: burgerCatId,
-        name: "Pizza Margherita",
-        description: "Traditional tomato sauce, fresh mozzarella, and fresh basil leaves.",
-        basePrice: 750.00,
-        available: true,
-        popular: true,
-        sortOrder: 1,
-        kitchenStation: "PIZZA",
-        ingredients: {
-          create: [
-            { name: "Tomato Sauce", removable: false, sortOrder: 0 },
-            { name: "Mozzarella Cheese", removable: true, sortOrder: 1 },
-            { name: "Fresh Basil", removable: true, sortOrder: 2 },
-          ]
-        },
-        modifiers: {
-          create: [
-            { name: "Extra Cheese", extraPrice: 100.00, sortOrder: 0 },
-            { name: "Mushrooms", extraPrice: 80.00, sortOrder: 1 },
-          ]
-        }
-      }
-    });
-  }
+  return null;
+}
 
-  // 3. Coca-Cola
-  const coke = await prisma.menuItem.findFirst({
-    where: { restaurantId, categoryId: drinksCatId, name: "Coca-Cola" },
-  });
-  if (!coke) {
-    await prisma.menuItem.create({
-      data: {
-        restaurantId,
-        categoryId: drinksCatId,
-        name: "Coca-Cola",
-        description: "Chilled 33cl can.",
-        basePrice: 120.00,
-        available: true,
-        popular: false,
-        sortOrder: 0,
-        kitchenStation: "CAFETERIA",
-      }
-    });
-  }
+function resolveKitchenStation(categoryName: string | null | undefined, itemName: string): KitchenStation | null {
+  return resolveKitchenStationFromCategoryName(categoryName ?? "") ?? resolveKitchenStationFromItemName(itemName);
+}
 
-  // 4. Chocolate Brownie
-  const brownie = await prisma.menuItem.findFirst({
-    where: { restaurantId, categoryId: dessertsCatId, name: "Chocolate Brownie" },
+async function repairExistingMenuItemKitchenStations(): Promise<void> {
+  const items = await prisma.menuItem.findMany({
+    include: {
+      category: true,
+    },
   });
-  if (!brownie) {
-    await prisma.menuItem.create({
-      data: {
-        restaurantId,
-        categoryId: dessertsCatId,
-        name: "Chocolate Brownie",
-        description: "Warm fudge brownie served with vanilla ice cream scoop.",
-        basePrice: 350.00,
-        available: true,
-        popular: true,
-        sortOrder: 0,
-        kitchenStation: "CAFETERIA",
-      }
+
+  for (const item of items) {
+    const resolvedStation = resolveKitchenStation(item.category?.name, item.name);
+    if (!resolvedStation) continue;
+
+    await prisma.menuItem.update({
+      where: { id: item.id },
+      data: { kitchenStation: resolvedStation },
+    });
+
+    console.log("MENU ITEM UPDATED", {
+      name: item.name,
+      category: item.category?.name,
+      station: resolvedStation,
     });
   }
 }
@@ -385,7 +310,7 @@ async function main() {
 
   await seedExpenseCategories(restaurant.id);
   await seedDefaultFloorsAndTables(restaurant.id);
-  await seedDefaultMenu(restaurant.id);
+  await repairExistingMenuItemKitchenStations();
 
   const printers = [
     {
