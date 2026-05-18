@@ -41,13 +41,26 @@ export async function startPosHttpServer(env: Env): Promise<{
     httpServer.once("error", onError);
     httpServer.listen(env.PORT, listenHost, () => {
       httpServer.off("error", onError);
+
       rootLogger.info(
-        { port: env.PORT, host: listenHost, env: env.NODE_ENV },
+        {
+          port: env.PORT,
+          host: listenHost,
+          env: env.NODE_ENV,
+          health: `http://${listenHost}:${env.PORT}/health`,
+        },
         "HTTP server listening",
       );
+
       console.log(`[BOOT] API listening on ${listenHost}:${env.PORT}`);
+      console.log(`[BOOT] Health: http://${listenHost}:${env.PORT}/health`);
+
       resolve();
     });
+  });
+
+  httpServer.on("clientError", (err) => {
+    rootLogger.warn({ err }, "HTTP client error");
   });
 
   async function gracefulShutdown(signal: string) {

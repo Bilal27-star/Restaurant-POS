@@ -1,4 +1,4 @@
-import type { OrderStatus, OrderType } from "@prisma/client";
+import type { KitchenStation, OrderStatus, OrderType, Prisma } from "@pos/database";
 
 import { ApiError } from "../../core/http/ApiError.js";
 import { money } from "../../core/orders/money.js";
@@ -139,13 +139,64 @@ export class OrdersService {
         offlineClientMutationId: input.clientMutationId ?? null,
         lines: input.lines,
       }),
-    ).then(({ order: o, inserted }) => {
-      if (inserted) {
-        this.hardwarePrint?.scheduleKitchenReprint(input.restaurantId, input.actorUserId, o);
-        if (input.type === "DINE_IN" && input.tableId) {
-          this.hardwarePrint?.scheduleTableTicket(input.restaurantId, input.actorUserId, o);
+    ).then(async ({ order: o, inserted }) => {
+      console.log("ORDER TYPE:", input.type);
+      console.log("TABLE ID:", input.tableId);
+      console.log("REACHED PRINT BLOCK");
+
+      const kitchenGroups = new Map<KitchenStation, typeof o.items>();
+
+      for (const it of o.items) {
+        if (!it.menuItemId) continue;
+        const menuItem = await prisma.menuItem.findUnique({
+          where: { id: it.menuItemId },
+          select: { kitchenStation: true },
+        });
+
+        if (!menuItem?.kitchenStation) continue;
+
+        const existing = kitchenGroups.get(menuItem.kitchenStation) ?? [];
+        existing.push(it);
+        kitchenGroups.set(menuItem.kitchenStation, existing);
+      }
+
+      for (const [station, items] of kitchenGroups) {
+        if (!station) {
+          throw new Error("Missing kitchen station");
         }
+        if (this.hardwarePrint) {
+          await this.hardwarePrint.scheduleKitchenStationTicket(
+            o.restaurantId,
+            input.actorUserId,
+            o,
+            station,
+            items.map((it) => ({
+              quantity: it.quantity,
+              nameSnapshot: it.nameSnapshot,
+              kitchenNotes: it.kitchenNotes,
+              removedIngredients: it.removedIngredients,
+              modifiers: it.modifiers.map((m) => ({ label: m.label, priceDelta: m.priceDelta })),
+            })),
+          );
+        }
+      }
+
+      if (inserted) {
+        // Table identification ticket — dine-in orders only, routed to receipt station.
+        if (input.type === "DINE_IN" && input.tableId) {
+          console.log("=== PRINT DEBUG START ===");
+          console.log({
+             orderType: input.type,
+             tableId: input.tableId,
+             restaurantId: input.restaurantId
+          });
+          this.hardwarePrint?.scheduleTableTicket(input.restaurantId, input.actorUserId, o);
+          console.log("PRINT FUNCTION CALLED");
+        }
+
         getRealtimeHub()?.publishOrderCreated(o);
+      } else {
+        getRealtimeHub()?.publishOrderUpdated(o, { op: "patch" });
       }
       return this.serializeOrder(o);
     });
@@ -209,8 +260,8 @@ export class OrdersService {
       customerId?: string | null;
       waiterId?: string | null;
       partySize?: number | null;
-      taxTotal?: import("@prisma/client").Prisma.Decimal | null;
-      discountTotal?: import("@prisma/client").Prisma.Decimal | null;
+      taxTotal?: Prisma.Decimal | null;
+      discountTotal?: Prisma.Decimal | null;
     } = { ...rest };
 
     if (taxIn !== undefined) {

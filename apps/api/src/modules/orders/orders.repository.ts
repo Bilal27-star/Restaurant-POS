@@ -297,6 +297,7 @@ export class OrdersRepository {
         if (!table || table.deletedAt) {
           throw new Error("TABLE_NOT_FOUND");
         }
+        let existingOrder = null;
         if (table.currentOrderId) {
           const open = await tx.order.findFirst({
             where: {
@@ -305,16 +306,25 @@ export class OrdersRepository {
               closedAt: null,
               status: { notIn: ["COMPLETED", "CANCELLED"] },
             },
-            select: { id: true },
+            include: orderDetailInclude,
           });
           if (open) {
-            throw new Error("TABLE_HAS_OPEN_ORDER");
+            existingOrder = open;
+            console.log("TABLE CHECK:", {
+               tableId: input.tableId,
+               existingOrder
+            });
+            return { order: existingOrder, inserted: false };
           }
           await tx.restaurantTable.update({
             where: { id: input.tableId },
             data: { currentOrderId: null },
           });
         }
+        console.log("TABLE CHECK:", {
+           tableId: input.tableId,
+           existingOrder
+        });
       }
 
       const order = await tx.order.create({

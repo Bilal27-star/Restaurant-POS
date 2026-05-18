@@ -606,8 +606,12 @@ export function TablesPage() {
             setDeleteTarget(null);
             setSelectedId((id) => (id === deleteTarget.table.id ? null : id));
             flash(fr.tables.toastTableDeleted);
-          } catch {
-            flash("Impossible de supprimer la table.");
+          } catch (err: any) {
+            if (err && (err.message?.includes("active orders") || err.message?.includes("active order"))) {
+              flash("Impossible de supprimer cette table car elle contient des commandes actives.");
+            } else {
+              flash("Impossible de supprimer la table.");
+            }
             throw new Error("table_delete_failed");
           }
         }}

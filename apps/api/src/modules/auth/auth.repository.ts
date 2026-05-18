@@ -22,17 +22,21 @@ export class AuthRepository {
 
   findRestaurantBySlug(slug: string) {
     return this.db.restaurant.findFirst({
-      where: { slug, deletedAt: null },
+      where: { slug: { equals: slug, mode: "insensitive" }, deletedAt: null },
       select: { id: true, name: true, slug: true },
     });
   }
 
-  findUserForAuth(restaurantId: string, username: string): Promise<UserWithAuthRelations | null> {
+  findUserForAuth(restaurantId: string, usernameOrEmail: string): Promise<UserWithAuthRelations | null> {
+    const term = usernameOrEmail.trim();
     return this.db.user.findFirst({
       where: {
         restaurantId,
-        username: { equals: username, mode: "insensitive" },
         deletedAt: null,
+        OR: [
+          { username: { equals: term, mode: "insensitive" } },
+          { email: { equals: term, mode: "insensitive" } },
+        ],
       },
       include: {
         roles: {

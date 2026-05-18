@@ -1,2 +1,26 @@
 export { getPrisma, prisma, resetPrismaClient } from "./client.js";
 export { defaultSystemSettingsJson, type DefaultSystemSettings } from "./default-settings.js";
+
+// Re-export Prisma namespace, PrismaClient, and all generated enum types
+// so consumers can import from "@pos/database" rather than "@prisma/client" directly.
+export {
+  Prisma,
+  PrismaClient,
+  // enums
+  UserStatus,
+  RoleCode,
+  TableStatus,
+  OrderType,
+  OrderStatus,
+  OrderPaymentStatus,
+  PaymentMethod,
+  PaymentStatus,
+  ShiftStatus,
+  ExpenseCategoryCode,
+  CashTransactionType,
+  SyncMutationStatus,
+  PrinterRole,
+  PrintJobKind,
+  PrintJobStatus,
+  KitchenStation,
+} from "@prisma/client";

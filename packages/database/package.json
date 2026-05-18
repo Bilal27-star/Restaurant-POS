@@ -18,17 +18,17 @@
     "db:seed": "prisma db seed"
   },
   "prisma": {
-    "seed": "tsx prisma/seed.ts"
+  "seed": "tsx prisma/seed.ts"
   },
   "devDependencies": {
     "@pos/tsconfig": "file:../config/typescript",
     "@types/bcrypt": "^5.0.2",
     "bcrypt": "^5.1.1",
+    "prisma": "^6.19.3",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2"
   },
   "dependencies": {
-    "@prisma/client": "^6.0.0",
-    "prisma": "^6.0.0"
+    "@prisma/client": "^6.0.0"
   }
 }

@@ -45,8 +45,20 @@ export function createPosApiClient(opts: PosApiClientOptions) {
 
   async function request<T>(path: string, init?: RequestInit): Promise<T> {
     const headers = new Headers(init?.headers);
-    const token = opts.getAccessToken();
-    if (token) {
+
+    let token = opts.getAccessToken();
+
+    // Fallback for desktop/browser refreshes where auth context is not ready yet
+    if (!token && typeof window !== "undefined") {
+      token =
+        localStorage.getItem("accessToken") ||
+        sessionStorage.getItem("accessToken") ||
+        localStorage.getItem("token") ||
+        sessionStorage.getItem("token") ||
+        null;
+    }
+
+    if (token && token.trim().length > 0) {
       headers.set("Authorization", `Bearer ${token}`);
     }
     const extra = opts.getRequestHeaders?.();

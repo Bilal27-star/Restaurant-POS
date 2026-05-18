@@ -458,6 +458,10 @@ model MenuItem {
   basePrice   Decimal  @map("base_price") @db.Decimal(14, 2)
   available   Boolean  @default(true)
   popular     Boolean  @default(false)
+
+  /// Kitchen routing destination
+  kitchenStation KitchenStation?
+
   sortOrder   Int      @default(0) @map("sort_order")
 
   version   Int      @default(1)
@@ -971,12 +975,21 @@ enum PrintJobStatus {
   CANCELLED
 }
 
+enum KitchenStation {
+  PIZZA
+  PLATS
+  SNACK
+  CAFETERIA
+}
+
 model RestaurantPrinter {
   id           String @id @default(uuid()) @db.Uuid
   restaurantId String @map("restaurant_id") @db.Uuid
 
   name       String
   role       PrinterRole
+  /// Route menu items to a specific kitchen printer (Pizza / Snacks / etc.)
+  kitchenStation KitchenStation? @map("kitchen_station")
   /// e.g. RAW_ESCPOS, NETWORK_TCP, SPOOL_FILE
   driver           String  @default("RAW_ESCPOS") @map("driver")
   connectionJson   Json    @default("{}") @map("connection_json")
@@ -991,7 +1004,8 @@ model RestaurantPrinter {
   printJobs  PrintJob[]
 
   @@unique([restaurantId, name])
-  @@index([restaurantId, role, isActive])
+  @@unique([restaurantId, role, kitchenStation])
+  @@index([restaurantId, role, kitchenStation, isActive])
   @@map("restaurant_printers")
 }
 

@@ -89,6 +89,19 @@ export function TableCard({
   const statusLabel =
     status === "free" ? fr.tableCard.free : status === "occupied" ? fr.tableCard.occupied : fr.tableCard.reserved;
 
+  // Card activation handler.
+  const activateCard = () => {
+    if (menuOpen) return;
+
+    // Select card only.
+    onSelect?.();
+
+    // Only occupied tables should open order details.
+    if (status === "occupied" && table.order) {
+      onOccupiedPress?.();
+    }
+  };
+
   return (
     <article
       role="button"
@@ -100,21 +113,11 @@ export function TableCard({
       data-selected={selected ? "" : undefined}
       aria-label={fr.aria.tableCard(table.numberLabel, statusLabel, Boolean(selected))}
       className={shell}
-      onClick={() => {
-        if (menuOpen) return;
-        if (status === "occupied" && table.order) {
-          onOccupiedPress?.();
-        }
-        onSelect?.();
-      }}
+      onClick={activateCard}
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") {
           e.preventDefault();
-          if (menuOpen) return;
-          if (status === "occupied" && table.order) {
-            onOccupiedPress?.();
-          }
-          onSelect?.();
+          activateCard();
         }
       }}
       onDragStart={handleDragStart}
