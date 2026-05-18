@@ -1,6 +1,7 @@
 import type { OfflineRuntime } from "@pos/offline-engine";
 import { getOrCreateDeviceId } from "@pos/offline-engine";
 
+import { buildOrderCreateBody, sanitizeOrderCreatePayload } from "@/components/pos/pos-order-cart-adapter";
 import { loadPendingPosOrders, savePendingPosOrders } from "@/lib/pos-pending-orders-storage";
 
 /**
@@ -22,7 +23,12 @@ export async function migrateLegacyPendingOrdersToOutbox(tenantId: string, sync:
         idempotencyKey: null,
         clientMutationId: row.clientMutationId,
         baseServerVersion: null,
-        payload: { ...row.body, clientMutationId: row.clientMutationId },
+        payload: buildOrderCreateBody(
+          sanitizeOrderCreatePayload({
+            ...(row.body as Record<string, unknown>),
+            clientMutationId: row.clientMutationId,
+          }),
+        ),
       });
     } catch {
       /* skip row — e.g. RBAC */

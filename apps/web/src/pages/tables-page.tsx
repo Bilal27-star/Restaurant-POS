@@ -24,6 +24,7 @@ import { usePageRouteDiagnostics } from "@/hooks/use-page-route-diagnostics";
 import { useTablesFloorsState } from "@/components/tables/use-tables-floors-state";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { buildAddOrderLinesBody } from "@/components/pos/pos-order-cart-adapter";
 import { getAppApi } from "@/lib/app-api";
 import { mapTablesLayoutPayload } from "@/lib/map-tables-layout";
 import { findTableIdInLayout, syncTablesLayoutQueryData } from "@/lib/tables-layout-cache";
@@ -663,16 +664,19 @@ export function TablesPage() {
           const order = target?.table.order;
           if (!target || !order) return;
           try {
-            await getAppApi().orders.addLines(order.id, {
-              lines: lines.map((l) => ({
-                menuItemId: l.menuItemId,
-                quantity: l.quantity,
-                modifierIds: [] as string[],
-                removedIngredientIds: [] as string[],
-                kitchenNotes: null,
-              })),
-              ...(order.version != null ? { version: order.version } : {}),
-            });
+            await getAppApi().orders.addLines(
+              order.id,
+              buildAddOrderLinesBody({
+                lines: lines.map((l) => ({
+                  menuItemId: l.menuItemId,
+                  quantity: l.quantity,
+                  modifierIds: [] as string[],
+                  removedIngredientIds: [] as string[],
+                  kitchenNotes: null,
+                })),
+                ...(order.version != null ? { version: order.version } : {}),
+              }),
+            );
             await qc.invalidateQueries({ queryKey: queryKeys.tables.layout() });
             await qc.invalidateQueries({ queryKey: queryKeys.tables.detail(order.id) });
             setAddItemsOpen(false);

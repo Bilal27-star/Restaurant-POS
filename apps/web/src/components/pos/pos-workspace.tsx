@@ -14,6 +14,7 @@ import { formatAlgeriaPhoneDisplay, phoneKey } from "@/components/takeaway/takea
 import { usePosMenuQuery } from "@/hooks/use-pos-menu-queries";
 import { usePosTableOrderBootstrap } from "@/hooks/use-pos-table-order-bootstrap";
 import { getAppApi } from "@/lib/app-api";
+import { isOrderPrintRoutingValidationError } from "@/lib/orders-api";
 import { menuItemToModalData, menuItemToProductCard, type MenuItemApiRow } from "@/lib/pos-menu-api";
 import { fr } from "@/lib/locale/fr";
 import { queryKeys } from "@/lib/query-keys";
@@ -30,6 +31,7 @@ import { PosCategoryRail, type PosCategoryTab } from "./pos-category-rail";
 import type { PosMenuItemModalData } from "./pos-menu-item-modal";
 import { PosMenuItemModal } from "./pos-menu-item-modal";
 import {
+  buildAddOrderLinesBody,
   buildOrderCreateBody,
   cartLinesToOrderApiLines,
   posCartLineToPanelItem,
@@ -225,26 +227,17 @@ export function PosWorkspace({ className, initialTableId = null }: PosWorkspaceP
   const dineInLockedLabel = tableLabel ? `Table ${tableLabel}` : null;
 
   const handleSendToKitchen = async () => {
-    if (lines.length === 0) return;
+    if (lines.length === 0 || kitchenFlightRef.current) return;
 
-    const runKitchenAsync = async (fn: () => Promise<void>) => {
-      if (kitchenFlightRef.current) return;
-      kitchenFlightRef.current = true;
-      setKitchenSending(true);
-      try {
-        await fn();
-      } finally {
-        kitchenFlightRef.current = false;
-        setKitchenSending(false);
-      }
-    };
+    kitchenFlightRef.current = true;
+    setKitchenSending(true);
 
+    try {
     if (orderType === "takeaway") {
       const e = validateTakeawayCustomerDraft(takeawayDraft);
       setTakeawayFieldErrors(e);
       if (Object.keys(e).length > 0) return;
 
-      await runKitchenAsync(async () => {
         try {
           // 1. Upsert customer
           const cRes: any = await getAppApi().customers.upsert({
@@ -281,10 +274,11 @@ export function PosWorkspace({ className, initialTableId = null }: PosWorkspaceP
           await qc.invalidateQueries({ queryKey: queryKeys.orders.all() });
           await qc.invalidateQueries({ queryKey: queryKeys.orders.takeawayBoard() });
           await qc.invalidateQueries({ queryKey: queryKeys.orders.takeawayHistory() });
-        } catch (err: any) {
-          flash(err.message || "Erreur lors de la création de la commande.");
+        } catch (err: unknown) {
+          if (!isOrderPrintRoutingValidationError(err)) {
+            flash(err instanceof Error ? err.message : "Erreur lors de la création de la commande.");
+          }
         }
-      });
       return;
     }
 
@@ -419,7 +413,6 @@ export function PosWorkspace({ className, initialTableId = null }: PosWorkspaceP
         }
         const clientMutationId =
           typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `m-${Date.now()}`;
-        await runKitchenAsync(async () => {
           try {
             await offline.sync.enqueue({
               tenantId: user.restaurantId,
@@ -430,8 +423,10 @@ export function PosWorkspace({ className, initialTableId = null }: PosWorkspaceP
               baseServerVersion: activeOrderVersion,
               payload: {
                 orderId: activeOrderId,
-                lines: apiLines,
-                ...(activeOrderVersion != null ? { version: activeOrderVersion } : {}),
+                ...buildAddOrderLinesBody({
+                  lines: apiLines,
+                  ...(activeOrderVersion != null ? { version: activeOrderVersion } : {}),
+                }),
               },
             });
             for (const line of draftLines) {
@@ -442,15 +437,16 @@ export function PosWorkspace({ className, initialTableId = null }: PosWorkspaceP
           } catch (e) {
             flash(e instanceof Error ? e.message : "Impossible d’enfiler la mutation hors ligne.");
           }
-        });
         return;
       }
-      await runKitchenAsync(async () => {
         try {
-          const data = await getAppApi().orders.addLines(activeOrderId, {
-            lines: apiLines,
-            ...(activeOrderVersion != null ? { version: activeOrderVersion } : {}),
-          });
+          const data = await getAppApi().orders.addLines(
+            activeOrderId,
+            buildAddOrderLinesBody({
+              lines: apiLines,
+              ...(activeOrderVersion != null ? { version: activeOrderVersion } : {}),
+            }),
+          );
           hydrateFromOrderDetail(data);
           await qc.invalidateQueries({ queryKey: queryKeys.tables.layout() });
           if (tableId) await qc.invalidateQueries({ queryKey: queryKeys.pos.tableBootstrap(tableId) });
@@ -459,7 +455,6 @@ export function PosWorkspace({ className, initialTableId = null }: PosWorkspaceP
         } catch {
           flash("Impossible d’ajouter les articles (réseau ou version).");
         }
-      });
       return;
     }
 
@@ -485,7 +480,6 @@ export function PosWorkspace({ className, initialTableId = null }: PosWorkspaceP
     if (!online && user?.restaurantId) {
       const clientMutationId =
         typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `m-${Date.now()}`;
-      await runKitchenAsync(async () => {
         try {
           await offline.sync.enqueue({
             tenantId: user.restaurantId,
@@ -503,11 +497,9 @@ export function PosWorkspace({ className, initialTableId = null }: PosWorkspaceP
         } catch (e) {
           flash(e instanceof Error ? e.message : "Impossible d’enfiler la commande hors ligne.");
         }
-      });
       return;
     }
 
-    await runKitchenAsync(async () => {
       try {
         const clientMutationId =
           typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `m-${Date.now()}`;
@@ -517,22 +509,27 @@ export function PosWorkspace({ className, initialTableId = null }: PosWorkspaceP
         if (resolvedTableId) await qc.invalidateQueries({ queryKey: queryKeys.pos.tableBootstrap(resolvedTableId) });
         flash("Commande créée et envoyée en cuisine.");
         setCartOpen(false);
-      } catch (err: any) {
+      } catch (err: unknown) {
+        if (isOrderPrintRoutingValidationError(err)) {
+          console.warn("[pos] ignored stale kitchen-ticket fields on order create", err);
+          return;
+        }
         console.error("FULL ORDER ERROR:", err);
-        console.log("REQUEST BODY:", body);
 
+        const e = err as { details?: unknown; response?: { data?: unknown } };
         const details =
-          err?.details ||
-          err?.response?.data?.details ||
-          err?.response?.data?.errors ||
-          err?.response?.data ||
+          e?.details ||
+          (e?.response?.data as { details?: unknown })?.details ||
+          (e?.response?.data as { errors?: unknown })?.errors ||
+          e?.response?.data ||
           err;
 
-        flash(
-          JSON.stringify(details, null, 2).slice(0, 250)
-        );
+        flash(JSON.stringify(details, null, 2).slice(0, 250));
       }
-    });
+    } finally {
+      kitchenFlightRef.current = false;
+      setKitchenSending(false);
+    }
   };
 
   const hasMenuData = categories.length > 0 || items.length > 0;

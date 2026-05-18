@@ -4,6 +4,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useKitchenOrdersQuery } from "@/hooks/use-kitchen-orders-query";
 import { fr } from "@/lib/locale/fr";
 import { cn } from "@/lib/utils";
+import { buildOrderPatchBody } from "@/components/pos/pos-order-cart-adapter";
 import { getAppApi } from "@/lib/app-api";
 import { queryKeys } from "@/lib/query-keys";
 import { Button } from "@/components/ui/button";
@@ -27,7 +28,7 @@ export function KitchenPage() {
     setActionError(null);
     try {
       if (status === "READY") {
-        await getAppApi().orders.patch(orderId, { status: "READY" });
+        await getAppApi().orders.patch(orderId, buildOrderPatchBody({ status: "READY" }));
       } else {
         await getAppApi().orders.complete(orderId, {});
       }

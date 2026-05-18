@@ -2,6 +2,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { useTakeawayOrdersQuery } from "@/hooks/use-takeaway-orders-query";
 import { fr } from "@/lib/locale/fr";
+import { buildOrderPatchBody } from "@/components/pos/pos-order-cart-adapter";
 import { getAppApi } from "@/lib/app-api";
 import { queryKeys } from "@/lib/query-keys";
 import type { SerializedTakeawayOrder } from "@/types/serialized-order";
@@ -61,7 +62,7 @@ export function useTakeawayOrders(nowMs: number) {
 
   const startPreparing = async (id: string) => {
     try {
-      await getAppApi().orders.patch(id, { status: "PREPARING" });
+      await getAppApi().orders.patch(id, buildOrderPatchBody({ status: "PREPARING" }));
       refreshTakeawayQueries();
     } catch (err) {
       console.error("takeaway startPreparing failed", err);
@@ -70,7 +71,7 @@ export function useTakeawayOrders(nowMs: number) {
   };
   const markReady = async (id: string) => {
     try {
-      await getAppApi().orders.patch(id, { status: "READY" });
+      await getAppApi().orders.patch(id, buildOrderPatchBody({ status: "READY" }));
       refreshTakeawayQueries();
     } catch (err) {
       console.error("takeaway markReady failed", err);
