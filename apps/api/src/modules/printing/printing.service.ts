@@ -1,12 +1,24 @@
 import { createHash } from "node:crypto";
+import fs from "node:fs";
 
-import type { PrintJobKind } from "@prisma/client";
+import type { KitchenStation, PrintJobKind, PrintJobStatus, PrinterRole, RestaurantPrinter } from "@pos/database";
 
 import { ApiError } from "../../core/http/ApiError.js";
 import { renderThermalEscPos } from "../../core/printing/renderer.js";
 import type { ThermalDocument } from "../../core/printing/documents/types.js";
+import { prisma } from "../../prisma/index.js";
 import { printPayload } from "./printing.validation.js";
 import { PrintingRepository } from "./printing.repository.js";
+
+const KITCHEN_STATION_CONFIG: Record<
+  KitchenStation,
+  { name: string; host: string; port: number }
+> = {
+  PIZZA: { name: "Pizza Printer", host: "192.168.1.100", port: 9100 },
+  PLATS: { name: "Plats Printer", host: "192.168.1.101", port: 9100 },
+  SNACK: { name: "Snack Printer", host: "192.168.1.102", port: 9100 },
+  CAFETERIA: { name: "Cafeteria Printer", host: "192.168.1.103", port: 9100 },
+};
 
 function escposFingerprint(bytes: Uint8Array): { sha256: string; base64: string } {
   const buf = Buffer.from(bytes);
@@ -45,6 +57,78 @@ export class PrintingService {
     return doc as ThermalDocument;
   }
 
+  private async resolveKitchenStationPrinter(
+    restaurantId: string,
+    station: KitchenStation,
+  ): Promise<RestaurantPrinter> {
+    const cfg = KITCHEN_STATION_CONFIG[station];
+    if (!cfg) {
+      throw new Error(`Unknown kitchen station: ${station}`);
+    }
+
+    const connectionJson = { host: cfg.host, port: cfg.port };
+    const printerData = {
+      name: cfg.name,
+      role: "KITCHEN" as const,
+      kitchenStation: station,
+      driver: "NETWORK_TCP" as const,
+      connectionJson,
+      isActive: true,
+      isDefault: false,
+    };
+
+    const existingPrinter =
+      (await prisma.restaurantPrinter.findFirst({
+        where: { restaurantId, kitchenStation: station, isActive: true },
+      })) ??
+      (await prisma.restaurantPrinter.findFirst({
+        where: { restaurantId, name: cfg.name, isActive: true },
+      }));
+
+    if (existingPrinter) {
+      return prisma.restaurantPrinter.update({
+        where: { id: existingPrinter.id },
+        data: printerData,
+      });
+    }
+
+    return prisma.restaurantPrinter.create({
+      data: { restaurantId, ...printerData },
+    });
+  }
+
+  async enqueueKitchenStationJob(input: {
+    restaurantId: string;
+    requestedByUserId: string | null;
+    station: KitchenStation;
+    payload: unknown;
+    itemNames: string[];
+    priority?: number;
+  }) {
+    console.log("KITCHEN JOB CREATED", {
+      station: input.station,
+      items: input.itemNames,
+    });
+
+    const selectedPrinter = await this.resolveKitchenStationPrinter(input.restaurantId, input.station);
+
+    console.log("PRINTER RESOLUTION", {
+      kind: "KITCHEN_TICKET",
+      station: input.station,
+      printer: selectedPrinter.name,
+      connection: selectedPrinter.connectionJson,
+    });
+
+    return this.enqueueJob({
+      restaurantId: input.restaurantId,
+      requestedByUserId: input.requestedByUserId,
+      kind: "KITCHEN_TICKET",
+      payload: input.payload,
+      printerId: selectedPrinter.id,
+      priority: input.priority ?? 5,
+    });
+  }
+
   async renderEscPos(input: {
     restaurantId: string;
     kind: PrintJobKind;
@@ -63,17 +147,32 @@ export class PrintingService {
     requestedByUserId: string | null;
     kind: PrintJobKind;
     payload: unknown;
-    printerId?: string | null;
+    printerId: string;
     priority?: number;
     maxAttempts?: number;
   }) {
     const doc = this.parsePayload(input.kind, input.payload);
-    const width = await this.manager.paperWidthChars(input.restaurantId, input.printerId ?? null);
+
+    if (!input.printerId) {
+      throw ApiError.badRequest("printerId is required");
+    }
+
+    const selectedPrinter = await this.repo.findPrinter(input.restaurantId, input.printerId);
+    if (!selectedPrinter) {
+      throw ApiError.badRequest("Resolved printer not found");
+    }
+
+    console.log("ENQUEUE RECEIVED PRINTER", selectedPrinter.name);
+
+    const width =
+      selectedPrinter.paperWidthChars ??
+      (await this.manager.paperWidthChars(input.restaurantId, selectedPrinter.id));
     const bytes = renderThermalEscPos(input.kind, doc, width);
     const { sha256, base64 } = escposFingerprint(bytes);
+
     const job = await this.repo.createJob({
       restaurantId: input.restaurantId,
-      printerId: input.printerId ?? null,
+      printerId: selectedPrinter.id,
       requestedByUserId: input.requestedByUserId,
       kind: input.kind,
       payloadJson: doc as unknown as object,
@@ -82,12 +181,53 @@ export class PrintingService {
       priority: input.priority ?? 0,
       maxAttempts: input.maxAttempts ?? 5,
     });
+
+    const connection = (selectedPrinter.connectionJson as Record<string, unknown>) || {};
+    const transport =
+      (connection.transport as string | undefined) ||
+      (selectedPrinter.driver === "NETWORK_TCP" ? "tcp" : "usb");
+    const driver = selectedPrinter.driver || "RAW_ESCPOS";
+    const connectionJson = {
+      transport,
+      ...connection,
+    };
+
+    console.log("PRINT EXECUTION", {
+      printer: selectedPrinter.name,
+    });
+
+    // Support validation for Ethernet printers
+    if (transport === "tcp" || transport === "ethernet") {
+      const ip = connectionJson.ip || connectionJson.host;
+      const port = connectionJson.port;
+      if (!ip || typeof ip !== "string") {
+        throw new Error("Ethernet printer validation failed: ip must be a string");
+      }
+      if (typeof port !== "number" || port <= 0 || port > 65535) {
+        throw new Error("Ethernet printer validation failed: port must be a valid number");
+      }
+    }
+
+    // Skip actual USB device execution if device does not exist
+    if (transport === "usb") {
+      const devicePath = connectionJson.devicePath || "/dev/usb/lp0";
+      if (fs.existsSync(devicePath)) {
+        try {
+          fs.writeFileSync(devicePath, Buffer.from(base64, "base64"));
+        } catch (err) {
+          console.error("USB printer write error:", err);
+        }
+      } else {
+        console.log(`USB device ${devicePath} does not exist. Skipping physical device execution.`);
+      }
+    }
+
     return this.serializeJob(job, true);
   }
 
   async listJobs(restaurantId: string, q: { status?: string; limit: number; offset: number }) {
     const rows = await this.repo.listJobs(restaurantId, {
-      status: q.status as import("@prisma/client").PrintJobStatus | undefined,
+      status: q.status as PrintJobStatus | undefined,
       limit: q.limit,
       offset: q.offset,
     });
@@ -140,7 +280,7 @@ export class PrintingService {
 
   async createPrinter(restaurantId: string, body: {
     name: string;
-    role: import("@prisma/client").PrinterRole;
+    role: PrinterRole;
     driver: string;
     connectionJson: object;
     paperWidthChars: number;
@@ -188,7 +328,7 @@ export class PrintingService {
     printerId: string,
     body: Partial<{
       name: string;
-      role: import("@prisma/client").PrinterRole;
+      role: PrinterRole;
       driver: string;
       connectionJson: object;
       paperWidthChars: number;

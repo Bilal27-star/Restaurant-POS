@@ -10,5 +10,9 @@ export async function verifyPassword(plain: string, hash: string): Promise<boole
   if (!hash || typeof hash !== "string" || hash.length < 10) {
     return false;
   }
-  return bcrypt.compare(plain, hash);
+  try {
+    return await bcrypt.compare(plain, hash);
+  } catch {
+    return false;
+  }
 }

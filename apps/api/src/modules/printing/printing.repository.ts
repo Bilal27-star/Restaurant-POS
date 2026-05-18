@@ -1,4 +1,4 @@
-import type { PrintJobKind, PrintJobStatus, PrinterRole } from "@prisma/client";
+import type { PrintJobKind, PrintJobStatus, PrinterRole } from "@pos/database";
 
 import { prisma } from "../../prisma/index.js";
 
@@ -33,7 +33,38 @@ export class PrintingRepository {
     });
   }
 
+  private async ensureDefaultPrinters(restaurantId: string): Promise<void> {
+    const count = await prisma.restaurantPrinter.count({
+      where: { restaurantId },
+    });
+    if (count === 0) {
+      await prisma.restaurantPrinter.createMany({
+        data: [
+          {
+            restaurantId,
+            name: "Cashier Printer",
+            role: "CASHIER",
+            driver: "RAW_ESCPOS",
+            connectionJson: { transport: "usb", devicePath: "/dev/usb/lp0" },
+            isDefault: true,
+            isActive: true,
+          },
+          {
+            restaurantId,
+            name: "Kitchen Printer",
+            role: "KITCHEN",
+            driver: "RAW_ESCPOS",
+            connectionJson: { transport: "usb", devicePath: "/dev/usb/lp1" },
+            isDefault: true,
+            isActive: true,
+          }
+        ]
+      }).catch(() => {});
+    }
+  }
+
   async listPrinters(restaurantId: string) {
+    await this.ensureDefaultPrinters(restaurantId);
     return prisma.restaurantPrinter.findMany({
       where: { restaurantId },
       orderBy: [{ role: "asc" }, { name: "asc" }],
@@ -192,6 +223,7 @@ export class PrintingRepository {
   }
 
   async findDefaultActivePrinterByRole(restaurantId: string, role: PrinterRole) {
+    await this.ensureDefaultPrinters(restaurantId);
     return (
       (await prisma.restaurantPrinter.findFirst({
         where: { restaurantId, role, isActive: true, isDefault: true },

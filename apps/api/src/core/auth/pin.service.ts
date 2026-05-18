@@ -26,11 +26,11 @@ export async function verifyPin(pin: string, pinHash: string | null, env: Env): 
   if (!pinHash) return false;
   try {
     assertValidPinFormat(pin);
+    const digest = pinPepperedDigest(pin, env);
+    return await bcrypt.compare(digest, pinHash);
   } catch {
     return false;
   }
-  const digest = pinPepperedDigest(pin, env);
-  return bcrypt.compare(digest, pinHash);
 }
 
 /** Constant-time string compare for refresh tokens before hashing. */

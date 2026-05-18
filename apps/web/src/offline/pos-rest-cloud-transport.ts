@@ -3,6 +3,16 @@ import { ApiClientError } from "@pos/api-client";
 import type { CloudSyncTransport } from "@pos/offline-engine";
 import type { OutboxOperation, PushBatchResult, PushOpOutcome } from "@pos/offline-engine";
 
+import {
+  buildOrderCreateBody,
+  buildOrderPatchBody,
+  sanitizeAddOrderLinesPayload,
+  sanitizeOrderCreatePayload,
+  sanitizeOrderLinePatchPayload,
+  sanitizeOrderPatchPayload,
+  sanitizeOrderVersionPayload,
+} from "@/components/pos/pos-order-cart-adapter";
+
 function isRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null;
 }
@@ -75,8 +85,13 @@ async function executeOne(
 
   switch (op.kind) {
     case "order.create": {
-      const body = isRecord(payload) ? { ...payload } : {};
-      body.clientMutationId = op.clientMutationId;
+      const raw = isRecord(payload) ? payload : {};
+      const body = buildOrderCreateBody(
+        sanitizeOrderCreatePayload({
+          ...raw,
+          clientMutationId: op.clientMutationId,
+        }),
+      );
       await api.orders.create(body);
       return { outcome: "accepted" };
     }
@@ -85,7 +100,7 @@ async function executeOne(
         return { outcome: "dead", message: "invalid_payload:order.patch" };
       }
       const { orderId, ...rest } = payload as { orderId: string; [k: string]: unknown };
-      await api.orders.patch(orderId, rest);
+      await api.orders.patch(orderId, buildOrderPatchBody(sanitizeOrderPatchPayload(rest)));
       return { outcome: "accepted" };
     }
     case "order.line.add": {
@@ -93,7 +108,7 @@ async function executeOne(
         return { outcome: "dead", message: "invalid_payload:order.line.add" };
       }
       const { orderId, ...body } = payload as { orderId: string; [k: string]: unknown };
-      await api.orders.addLines(orderId, body);
+      await api.orders.addLines(orderId, sanitizeAddOrderLinesPayload(body));
       return { outcome: "accepted" };
     }
     case "order.line.update": {
@@ -101,7 +116,7 @@ async function executeOne(
         return { outcome: "dead", message: "invalid_payload:order.line.update" };
       }
       const { orderId, lineId, ...body } = payload as { orderId: string; lineId: string; [k: string]: unknown };
-      await api.orders.patchLine(orderId, lineId, body);
+      await api.orders.patchLine(orderId, lineId, sanitizeOrderLinePatchPayload(body));
       return { outcome: "accepted" };
     }
     case "order.line.delete": {
@@ -121,7 +136,7 @@ async function executeOne(
         return { outcome: "dead", message: "invalid_payload:order.complete" };
       }
       const { orderId, ...body } = payload as { orderId: string; [k: string]: unknown };
-      await api.orders.complete(orderId, body);
+      await api.orders.complete(orderId, sanitizeOrderVersionPayload(body));
       return { outcome: "accepted" };
     }
     case "order.cancel": {
@@ -129,7 +144,7 @@ async function executeOne(
         return { outcome: "dead", message: "invalid_payload:order.cancel" };
       }
       const { orderId, ...body } = payload as { orderId: string; [k: string]: unknown };
-      await api.orders.cancel(orderId, body);
+      await api.orders.cancel(orderId, sanitizeOrderVersionPayload(body));
       return { outcome: "accepted" };
     }
     case "payment.capture": {

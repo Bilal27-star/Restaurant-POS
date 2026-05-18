@@ -6,7 +6,7 @@ import { createAnalyticsRouter } from "../../modules/analytics/analytics.routes.
 import { createAuthRouter } from "../../modules/auth/auth.routes.js";
 import { customersRoutes } from "../../modules/customers/customers.routes.js";
 import { createExpensesRouter } from "../../modules/expenses/expenses.routes.js";
-import { createMenuRouter } from "../../modules/menu/menu.routes.js";
+import { createMenuRouter } from "../../modules/menu/index.js";
 import { createOrdersRouter } from "../../modules/orders/orders.routes.js";
 import { createPaymentsRouter } from "../../modules/payments/payments.routes.js";
 import { createPrintingRouter } from "../../modules/printing/printing.routes.js";

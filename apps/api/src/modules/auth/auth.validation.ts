@@ -18,7 +18,7 @@ export const loginBodySchema = z
     const restaurantSlug = (d.restaurantSlug ?? d.slug ?? "").trim();
     return {
       restaurantSlug,
-      username: d.username,
+      username: d.username.trim(),
       password: d.password,
       pin: d.pin,
     };

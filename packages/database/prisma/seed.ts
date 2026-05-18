@@ -1,4 +1,11 @@
-import { ExpenseCategoryCode, PrismaClient, RoleCode, type Prisma } from "@prisma/client";
+import {
+  ExpenseCategoryCode,
+  PrismaClient,
+  RoleCode,
+  PrinterRole,
+  KitchenStation,
+  type Prisma,
+} from "@prisma/client";
 import bcrypt from "bcrypt";
 
 import { defaultSystemSettingsJson } from "../src/default-settings.js";
@@ -79,6 +86,115 @@ const ROLE_MATRIX: Record<RoleCode, string[]> = {
   ],
 };
 
+async function seedDefaultFloorsAndTables(restaurantId: string): Promise<void> {
+  let floor = await prisma.restaurantFloor.findFirst({
+    where: { restaurantId, name: "Main Dining Room" },
+  });
+  if (!floor) {
+    floor = await prisma.restaurantFloor.create({
+      data: {
+        restaurantId,
+        name: "Main Dining Room",
+        sortOrder: 0,
+      },
+    });
+  }
+
+  const tables = [
+    { number: "1", capacity: 2 },
+    { number: "2", capacity: 4 },
+    { number: "3", capacity: 4 },
+    { number: "4", capacity: 6 },
+    { number: "5", capacity: 2 },
+    { number: "6", capacity: 8 },
+    { number: "7", capacity: 4 },
+    { number: "8", capacity: 6 },
+  ];
+
+  for (const t of tables) {
+    const existing = await prisma.restaurantTable.findFirst({
+      where: { restaurantId, floorId: floor.id, number: t.number },
+    });
+    if (!existing) {
+      await prisma.restaurantTable.create({
+        data: {
+          restaurantId,
+          floorId: floor.id,
+          number: t.number,
+          capacity: t.capacity,
+          status: "FREE",
+        },
+      });
+    }
+  }
+}
+
+function resolveKitchenStationFromCategoryName(categoryName: string): KitchenStation | null {
+  const c = categoryName.toLowerCase();
+
+  if (c.includes("pizza")) {
+    return KitchenStation.PIZZA;
+  }
+  if (/\b(entrée|entree|entrées|plat|plats|poisson|paella)\b/.test(c) || c.includes("plat")) {
+    return KitchenStation.PLATS;
+  }
+  if (/\b(snack|sandwich|burger)\b/.test(c)) {
+    return KitchenStation.SNACK;
+  }
+  if (/\b(boisson|cafeteria|cafétéria|dessert|coffee|café|cafe|drink|drinks)\b/.test(c)) {
+    return KitchenStation.CAFETERIA;
+  }
+
+  return null;
+}
+
+function resolveKitchenStationFromItemName(name: string): KitchenStation | null {
+  const n = name.toLowerCase();
+
+  if (n.includes("pizza") || n.includes("mergue")) {
+    return KitchenStation.PIZZA;
+  }
+  if (n.includes("salade") || /\b(fish|paella|plat|plats|entrée|entree)\b/.test(n)) {
+    return KitchenStation.PLATS;
+  }
+  if (/\b(sandwich|burger|snack|taco)\b/.test(n)) {
+    return KitchenStation.SNACK;
+  }
+  if (n.includes("jus") || /\b(drink|drinks|coca|cola|coffee|dessert|boisson)\b/.test(n)) {
+    return KitchenStation.CAFETERIA;
+  }
+
+  return null;
+}
+
+function resolveKitchenStation(categoryName: string | null | undefined, itemName: string): KitchenStation | null {
+  return resolveKitchenStationFromCategoryName(categoryName ?? "") ?? resolveKitchenStationFromItemName(itemName);
+}
+
+async function repairExistingMenuItemKitchenStations(): Promise<void> {
+  const items = await prisma.menuItem.findMany({
+    include: {
+      category: true,
+    },
+  });
+
+  for (const item of items) {
+    const resolvedStation = resolveKitchenStation(item.category?.name, item.name);
+    if (!resolvedStation) continue;
+
+    await prisma.menuItem.update({
+      where: { id: item.id },
+      data: { kitchenStation: resolvedStation },
+    });
+
+    console.log("MENU ITEM UPDATED", {
+      name: item.name,
+      category: item.category?.name,
+      station: resolvedStation,
+    });
+  }
+}
+
 async function seedExpenseCategories(restaurantId: string): Promise<void> {
   const defs: { code: ExpenseCategoryCode; name: string; sortOrder: number }[] = [
     { code: "INGREDIENTS", name: "Ingrédients", sortOrder: 0 },
@@ -152,17 +268,18 @@ async function main() {
     }
   }
 
+  const adminUsername = process.env.POS_INITIAL_ADMIN_USERNAME?.trim() || "admin";
   const adminPassword = await bcrypt.hash(
     process.env.POS_INITIAL_ADMIN_PASSWORD?.trim() || "admin",
     BCRYPT_ROUNDS,
   );
 
   const adminUser = await prisma.user.upsert({
-    where: { restaurantId_username: { restaurantId: restaurant.id, username: "admin" } },
+    where: { restaurantId_username: { restaurantId: restaurant.id, username: adminUsername } },
     create: {
       restaurantId: restaurant.id,
       fullName: "Administrator",
-      username: process.env.POS_INITIAL_ADMIN_USERNAME?.trim() || "admin",
+      username: adminUsername,
       email: null,
       hashedPassword: adminPassword,
       pinHash: null,
@@ -192,6 +309,94 @@ async function main() {
   });
 
   await seedExpenseCategories(restaurant.id);
+  await seedDefaultFloorsAndTables(restaurant.id);
+  await repairExistingMenuItemKitchenStations();
+
+  const printers = [
+    {
+      restaurantId: restaurant.id,
+      name: "Pizza Printer",
+      role: PrinterRole.KITCHEN,
+      kitchenStation: "PIZZA" as KitchenStation | null,
+      driver: "NETWORK_TCP",
+      connectionJson: {
+        host: "192.168.1.100",
+        port: 9100,
+      },
+      isDefault: false,
+    },
+    {
+      restaurantId: restaurant.id,
+      name: "Plats Printer",
+      role: PrinterRole.KITCHEN,
+      kitchenStation: "PLATS" as KitchenStation | null,
+      driver: "NETWORK_TCP",
+      connectionJson: {
+        host: "192.168.1.101",
+        port: 9100,
+      },
+      isDefault: false,
+    },
+    {
+      restaurantId: restaurant.id,
+      name: "Snack Printer",
+      role: PrinterRole.KITCHEN,
+      kitchenStation: "SNACK" as KitchenStation | null,
+      driver: "NETWORK_TCP",
+      connectionJson: {
+        host: "192.168.1.102",
+        port: 9100,
+      },
+      isDefault: false,
+    },
+    {
+      restaurantId: restaurant.id,
+      name: "Cafeteria Printer",
+      role: PrinterRole.KITCHEN,
+      kitchenStation: "CAFETERIA" as KitchenStation | null,
+      driver: "NETWORK_TCP",
+      connectionJson: {
+        host: "192.168.1.103",
+        port: 9100,
+      },
+      isDefault: false,
+    },
+    {
+      restaurantId: restaurant.id,
+      name: "Cashier Printer",
+      role: PrinterRole.CASHIER,
+      kitchenStation: null as KitchenStation | null,
+      driver: "RAW_ESCPOS",
+      connectionJson: {
+        transport: "usb",
+        devicePath: "/dev/usb/lp0",
+      },
+      isDefault: true,
+    },
+  ]
+
+  for (const printer of printers) {
+    await prisma.restaurantPrinter.upsert({
+      where: {
+        restaurantId_name: {
+          restaurantId: restaurant.id,
+          name: printer.name,
+        },
+      },
+      update: {
+        role: printer.role,
+        kitchenStation: printer.kitchenStation,
+        driver: printer.driver,
+        connectionJson: printer.connectionJson as Prisma.InputJsonValue,
+        isDefault: printer.isDefault,
+        isActive: true,
+      },
+      create: {
+        ...printer,
+        connectionJson: printer.connectionJson as Prisma.InputJsonValue,
+      },
+    })
+  }
 
   // eslint-disable-next-line no-console -- seed script
   console.log(

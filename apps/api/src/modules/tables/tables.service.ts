@@ -2,6 +2,7 @@ import type { TableStatus } from "@prisma/client";
 
 import { ApiError } from "../../core/http/ApiError.js";
 import { getRealtimeHub } from "../../realtime/registry.js";
+import { prisma } from "../../prisma/index.js";
 
 import {
   decimalToMajorString,
@@ -205,11 +206,24 @@ export class TablesService {
     if (!t) {
       throw ApiError.notFound("Table not found");
     }
-    if (t.currentOrderId && t.currentOrder && !t.currentOrder.closedAt) {
-      if (t.currentOrder.status !== "COMPLETED" && t.currentOrder.status !== "CANCELLED") {
-        throw ApiError.conflict("Cannot delete table with an active order");
-      }
+
+    const activeOrdersCount = await prisma.order.count({
+      where: {
+        tableId,
+        status: { notIn: ["COMPLETED", "CANCELLED"] },
+        closedAt: null,
+      },
+    });
+
+    console.log("TABLE DELETE", {
+      tableId,
+      activeOrdersCount
+    });
+
+    if (activeOrdersCount > 0) {
+      throw ApiError.conflict("Cannot delete table with active orders");
     }
+
     const n = await this.repo.softDeleteTable(restaurantId, tableId);
     if (n.count === 0) {
       throw ApiError.notFound("Table not found");

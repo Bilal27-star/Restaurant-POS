@@ -31,6 +31,7 @@ export type KitchenTicketDocument = {
   printedAtIso: string;
   lines: KitchenTicketLine[];
   orderKitchenNotes?: string | null;
+  station?: string;
 };
 
 export type CustomerReceiptLine = {

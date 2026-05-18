@@ -1,5 +1,6 @@
 import { createPosApiClient, type PosApiClient } from "@pos/api-client";
 import { logDataFlow } from "@/lib/desktop/data-flow-log";
+import { applySanitizedOrdersApi } from "@/lib/orders-api";
 import { isTauriDesktop } from "./desktop/tauri-host";
 
 const ACCESS_KEY = "pos_access_token";
@@ -203,30 +204,32 @@ function buildDesktopRequestHeaders(): Record<string, string> {
 
 export function getAppApi(): PosApiClient {
   if (!client) {
-    client = createPosApiClient({
-      baseUrl: apiBaseUrl(),
-      getAccessToken: () => getAccessToken(),
-      getRequestHeaders: buildDesktopRequestHeaders,
-      onHttpTrace: ({ url, method, status }) => {
-        if (!url.includes("/analytics/dashboard") && !url.includes("/tables/") && !url.includes("/menu/")) {
-          return;
-        }
-        const event = url.includes("/menu/")
-          ? "pos_menu_http_trace"
-          : url.includes("/tables/")
-            ? "tables_http_trace"
-            : "dashboard_http_trace";
-        logDataFlow(event, {
-          url,
-          method,
-          status,
-          throttled: status === 429,
-        });
-      },
-      onUnauthorized: () => {
-        setAccessToken(null);
-      },
-    });
+    client = applySanitizedOrdersApi(
+      createPosApiClient({
+        baseUrl: apiBaseUrl(),
+        getAccessToken: () => getAccessToken(),
+        getRequestHeaders: buildDesktopRequestHeaders,
+        onHttpTrace: ({ url, method, status }) => {
+          if (!url.includes("/analytics/dashboard") && !url.includes("/tables/") && !url.includes("/menu/")) {
+            return;
+          }
+          const event = url.includes("/menu/")
+            ? "pos_menu_http_trace"
+            : url.includes("/tables/")
+              ? "tables_http_trace"
+              : "dashboard_http_trace";
+          logDataFlow(event, {
+            url,
+            method,
+            status,
+            throttled: status === 429,
+          });
+        },
+        onUnauthorized: () => {
+          setAccessToken(null);
+        },
+      }),
+    );
   }
   return client;
 }
