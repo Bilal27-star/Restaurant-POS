@@ -88,7 +88,7 @@ export function PosWorkspace({ className, initialTableId = null }: PosWorkspaceP
   const [toast, setToast] = useState<string | null>(null);
   const [kitchenSending, setKitchenSending] = useState(false);
   const kitchenFlightRef = useRef(false);
-  const toastTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const toastTimeoutRef = useRef<number | null>(null);
 
   const flash = useCallback((msg: string) => {
     if (toastTimeoutRef.current != null) {
