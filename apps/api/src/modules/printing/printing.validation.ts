@@ -36,6 +36,9 @@ export const kitchenTicketPayload = z
     printedAtIso: z.string().min(1).max(80),
     lines: z.array(kitchenLine).min(1).max(200),
     orderKitchenNotes: z.string().max(4000).nullable().optional(),
+    /** Kitchen routing — optional on wire; required for station-specific tickets at render time. */
+    station: z.enum(["PIZZA", "PLATS", "SNACK", "CAFETERIA"]).optional(),
+    waiterName: z.string().max(120).optional(),
   })
   .strict();
 
@@ -152,17 +155,37 @@ export const failPrintJobBody = z
   })
   .strict();
 
+const kitchenStationValue = z.enum(["PIZZA", "PLATS", "SNACK", "CAFETERIA"]);
+
+function assertKitchenStationForRole(
+  role: "KITCHEN" | "CASHIER" | "RECEIPT",
+  kitchenStation: unknown,
+  ctx: z.RefinementCtx,
+): void {
+  if (role !== "KITCHEN" && kitchenStation != null) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "kitchenStation is only allowed for KITCHEN printers",
+      path: ["kitchenStation"],
+    });
+  }
+}
+
 export const createPrinterBody = z
   .object({
     name: z.string().min(1).max(120),
     role: z.enum(["KITCHEN", "CASHIER", "RECEIPT"]),
+    kitchenStation: kitchenStationValue.nullable().optional(),
     driver: z.string().max(40).optional().default("RAW_ESCPOS"),
     connectionJson: z.record(z.any()).optional(),
     paperWidthChars: z.coerce.number().int().min(24).max(64).optional().default(32),
     isDefault: z.coerce.boolean().optional().default(false),
     isActive: z.coerce.boolean().optional().default(true),
   })
-  .strict();
+  .strict()
+  .superRefine((o, ctx) => {
+    assertKitchenStationForRole(o.role, o.kitchenStation ?? null, ctx);
+  });
 
 export const printerIdParams = z.object({ printerId: uuid }).strict();
 
@@ -170,6 +193,7 @@ export const updatePrinterBody = z
   .object({
     name: z.string().min(1).max(120).optional(),
     role: z.enum(["KITCHEN", "CASHIER", "RECEIPT"]).optional(),
+    kitchenStation: kitchenStationValue.nullable().optional(),
     driver: z.string().max(40).optional(),
     connectionJson: z.record(z.any()).optional(),
     paperWidthChars: z.coerce.number().int().min(24).max(64).optional(),
@@ -177,4 +201,13 @@ export const updatePrinterBody = z
     isActive: z.coerce.boolean().optional(),
   })
   .strict()
-  .refine((o) => Object.keys(o).length > 0, { message: "At least one field is required" });
+  .refine((o) => Object.keys(o).length > 0, { message: "At least one field is required" })
+  .superRefine((o, ctx) => {
+    if (o.kitchenStation !== undefined && o.role !== undefined) {
+      assertKitchenStationForRole(o.role, o.kitchenStation, ctx);
+    } else if (o.kitchenStation !== undefined && o.role === undefined) {
+      // role checked in service against existing printer row
+    } else if (o.role !== undefined) {
+      assertKitchenStationForRole(o.role, null, ctx);
+    }
+  });

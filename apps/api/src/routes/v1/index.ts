@@ -9,6 +9,7 @@ import { createExpensesRouter } from "../../modules/expenses/expenses.routes.js"
 import { createMenuRouter } from "../../modules/menu/index.js";
 import { createOrdersRouter } from "../../modules/orders/orders.routes.js";
 import { createPaymentsRouter } from "../../modules/payments/payments.routes.js";
+import { createPrinterRouter } from "../../modules/printing/printer.routes.js";
 import { createPrintingRouter } from "../../modules/printing/printing.routes.js";
 import { rolesRoutes } from "../../modules/roles/roles.routes.js";
 import { createSettingsRouter } from "../../modules/settings/settings.routes.js";
@@ -34,6 +35,7 @@ export function buildV1Router(deps: V1RouterDeps): Router {
   router.use("/orders", createOrdersRouter(deps.env));
   router.use("/payments", createPaymentsRouter(deps.env));
   router.use("/print", createPrintingRouter(deps.env));
+  router.use("/printers", createPrinterRouter(deps.env));
   router.use("/shifts", createShiftsRouter(deps.env));
   router.use("/expenses", createExpensesRouter(deps.env));
   router.use("/analytics", createAnalyticsRouter(deps.env));

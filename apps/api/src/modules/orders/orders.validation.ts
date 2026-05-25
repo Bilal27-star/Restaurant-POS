@@ -7,13 +7,25 @@ const uuid = z.string().uuid();
 export const orderTypeZ = z.enum(["DINE_IN", "TAKEAWAY"]);
 export const orderStatusZ = z.enum(["PENDING", "PREPARING", "READY", "COMPLETED", "CANCELLED"]);
 
-const orderLineInput = z.object({
-  menuItemId: uuid,
-  quantity: z.coerce.number().int().min(1).max(999),
-  modifierIds: z.array(uuid).optional().default([]),
-  removedIngredientIds: z.array(uuid).optional().default([]),
-  kitchenNotes: z.string().max(2000).optional().nullable(),
-});
+/** Strip client-side print routing fields that must not be persisted on order lines. */
+function stripOrderLineRoutingFields(val: unknown): unknown {
+  if (!val || typeof val !== "object" || Array.isArray(val)) return val;
+  const { station: _station, waiterName: _waiterName, ...rest } = val as Record<string, unknown>;
+  return rest;
+}
+
+const orderLineInput = z.preprocess(
+  stripOrderLineRoutingFields,
+  z
+    .object({
+      menuItemId: uuid,
+      quantity: z.coerce.number().int().min(1).max(999),
+      modifierIds: z.array(uuid).optional().default([]),
+      removedIngredientIds: z.array(uuid).optional().default([]),
+      kitchenNotes: z.string().max(2000).optional().nullable(),
+    })
+    .strict(),
+);
 
 export const createOrderBody = z
   .object({

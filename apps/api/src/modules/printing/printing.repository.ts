@@ -1,12 +1,33 @@
-import type { PrintJobKind, PrintJobStatus, PrinterRole } from "@pos/database";
+import {
+  repairLegacyKitchenPrinters,
+  type KitchenStation,
+  type PrintJobKind,
+  type PrintJobStatus,
+  type PrinterRole,
+  type Prisma,
+} from "@pos/database";
+
+type RestaurantPrinter = Prisma.RestaurantPrinterGetPayload<Record<string, never>>;
 
 import { prisma } from "../../prisma/index.js";
+
+/** Defaults used only when creating a missing kitchen printer (first install). */
+const DEFAULT_KITCHEN_PRINTER_BY_STATION: Record<
+  KitchenStation,
+  { name: string; connectionJson: { host: string; port: number } }
+> = {
+  PIZZA: { name: "Pizza Printer", connectionJson: { host: "192.168.0.100", port: 9100 } },
+  PLATS: { name: "Plats Printer", connectionJson: { host: "192.168.0.101", port: 9100 } },
+  SNACK: { name: "Snack Printer", connectionJson: { host: "192.168.0.102", port: 9100 } },
+  CAFETERIA: { name: "Cafeteria Printer", connectionJson: { host: "192.168.0.103", port: 9100 } },
+};
 
 export class PrintingRepository {
   async createPrinter(input: {
     restaurantId: string;
     name: string;
     role: PrinterRole;
+    kitchenStation?: KitchenStation | null;
     driver: string;
     connectionJson: object;
     paperWidthChars: number;
@@ -24,6 +45,7 @@ export class PrintingRepository {
         restaurantId: input.restaurantId,
         name: input.name,
         role: input.role,
+        kitchenStation: input.kitchenStation ?? null,
         driver: input.driver,
         connectionJson: input.connectionJson,
         paperWidthChars: input.paperWidthChars,
@@ -34,13 +56,15 @@ export class PrintingRepository {
   }
 
   private async ensureDefaultPrinters(restaurantId: string): Promise<void> {
+    await repairLegacyKitchenPrinters(prisma, restaurantId);
+
     const count = await prisma.restaurantPrinter.count({
       where: { restaurantId },
     });
     if (count === 0) {
-      await prisma.restaurantPrinter.createMany({
-        data: [
-          {
+      await prisma.restaurantPrinter
+        .create({
+          data: {
             restaurantId,
             name: "Cashier Printer",
             role: "CASHIER",
@@ -49,17 +73,8 @@ export class PrintingRepository {
             isDefault: true,
             isActive: true,
           },
-          {
-            restaurantId,
-            name: "Kitchen Printer",
-            role: "KITCHEN",
-            driver: "RAW_ESCPOS",
-            connectionJson: { transport: "usb", devicePath: "/dev/usb/lp1" },
-            isDefault: true,
-            isActive: true,
-          }
-        ]
-      }).catch(() => {});
+        })
+        .catch(() => undefined);
     }
   }
 
@@ -243,12 +258,52 @@ export class PrintingRepository {
     );
   }
 
+  async findActiveKitchenPrinter(restaurantId: string, station: KitchenStation) {
+    return (
+      (await prisma.restaurantPrinter.findFirst({
+        where: { restaurantId, kitchenStation: station, isActive: true, role: "KITCHEN" },
+        orderBy: { name: "asc" },
+      })) ??
+      (await prisma.restaurantPrinter.findFirst({
+        where: {
+          restaurantId,
+          isActive: true,
+          role: "KITCHEN",
+          name: DEFAULT_KITCHEN_PRINTER_BY_STATION[station].name,
+        },
+      }))
+    );
+  }
+
+  /** Resolve kitchen printer from DB; create with seed defaults only when none exists. */
+  async ensureKitchenPrinter(restaurantId: string, station: KitchenStation): Promise<RestaurantPrinter> {
+    const existing = await this.findActiveKitchenPrinter(restaurantId, station);
+    if (existing) {
+      return existing;
+    }
+
+    const defaults = DEFAULT_KITCHEN_PRINTER_BY_STATION[station];
+    return prisma.restaurantPrinter.create({
+      data: {
+        restaurantId,
+        name: defaults.name,
+        role: "KITCHEN",
+        kitchenStation: station,
+        driver: "NETWORK_TCP",
+        connectionJson: defaults.connectionJson,
+        isActive: true,
+        isDefault: false,
+      },
+    });
+  }
+
   async updatePrinter(
     restaurantId: string,
     printerId: string,
     patch: {
       name?: string;
       role?: PrinterRole;
+      kitchenStation?: KitchenStation | null;
       driver?: string;
       connectionJson?: object;
       paperWidthChars?: number;
@@ -272,6 +327,7 @@ export class PrintingRepository {
       data: {
         ...(patch.name !== undefined ? { name: patch.name } : {}),
         ...(patch.role !== undefined ? { role: patch.role } : {}),
+        ...(patch.kitchenStation !== undefined ? { kitchenStation: patch.kitchenStation } : {}),
         ...(patch.driver !== undefined ? { driver: patch.driver } : {}),
         ...(patch.connectionJson !== undefined ? { connectionJson: patch.connectionJson } : {}),
         ...(patch.paperWidthChars !== undefined ? { paperWidthChars: patch.paperWidthChars } : {}),

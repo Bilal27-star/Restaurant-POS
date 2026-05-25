@@ -40,6 +40,9 @@ export const queryKeys = {
   users: {
     list: () => ["users", "list"] as const,
   },
+  printers: {
+    list: () => ["print", "printers"] as const,
+  },
   navigation: {
     counts: () => ["navigation", "counts"] as const,
   },

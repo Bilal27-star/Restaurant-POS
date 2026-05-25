@@ -9,6 +9,7 @@ import {
 import bcrypt from "bcrypt";
 
 import { defaultSystemSettingsJson } from "../src/default-settings.js";
+import { repairLegacyKitchenPrinters } from "../src/printer-repair.js";
 
 const prisma = new PrismaClient();
 
@@ -135,14 +136,14 @@ function resolveKitchenStationFromCategoryName(categoryName: string): KitchenSta
   if (c.includes("pizza")) {
     return KitchenStation.PIZZA;
   }
-  if (/\b(entrée|entree|entrées|plat|plats|poisson|paella)\b/.test(c) || c.includes("plat")) {
-    return KitchenStation.PLATS;
-  }
-  if (/\b(snack|sandwich|burger)\b/.test(c)) {
+  if (/\b(burger|sandwich|tacos?|snack)\b/.test(c)) {
     return KitchenStation.SNACK;
   }
-  if (/\b(boisson|cafeteria|cafétéria|dessert|coffee|café|cafe|drink|drinks)\b/.test(c)) {
+  if (/\b(boisson|drink|drinks|jus|coffee|café|cafe|dessert|cafeteria|cafétéria)\b/.test(c)) {
     return KitchenStation.CAFETERIA;
+  }
+  if (/\b(plat|plats|salade|paella|poisson)\b/.test(c) || c.includes("entrée") || c.includes("entree")) {
+    return KitchenStation.PLATS;
   }
 
   return null;
@@ -151,17 +152,17 @@ function resolveKitchenStationFromCategoryName(categoryName: string): KitchenSta
 function resolveKitchenStationFromItemName(name: string): KitchenStation | null {
   const n = name.toLowerCase();
 
-  if (n.includes("pizza") || n.includes("mergue")) {
+  if (n.includes("pizza")) {
     return KitchenStation.PIZZA;
   }
-  if (n.includes("salade") || /\b(fish|paella|plat|plats|entrée|entree)\b/.test(n)) {
-    return KitchenStation.PLATS;
-  }
-  if (/\b(sandwich|burger|snack|taco)\b/.test(n)) {
+  if (/\b(burger|sandwich|tacos?|snack)\b/.test(n)) {
     return KitchenStation.SNACK;
   }
-  if (n.includes("jus") || /\b(drink|drinks|coca|cola|coffee|dessert|boisson)\b/.test(n)) {
+  if (/\b(jus|drink|drinks|coca|cola|coffee|café|cafe|dessert|boisson)\b/.test(n)) {
     return KitchenStation.CAFETERIA;
+  }
+  if (/\b(salade|paella|poisson|plat|plats|entrée|entree|fish)\b/.test(n)) {
+    return KitchenStation.PLATS;
   }
 
   return null;
@@ -173,9 +174,8 @@ function resolveKitchenStation(categoryName: string | null | undefined, itemName
 
 async function repairExistingMenuItemKitchenStations(): Promise<void> {
   const items = await prisma.menuItem.findMany({
-    include: {
-      category: true,
-    },
+    where: { kitchenStation: null, deletedAt: null },
+    include: { category: true },
   });
 
   for (const item of items) {
@@ -187,10 +187,12 @@ async function repairExistingMenuItemKitchenStations(): Promise<void> {
       data: { kitchenStation: resolvedStation },
     });
 
-    console.log("MENU ITEM UPDATED", {
+    console.warn("[STATION RESOLVED]", {
+      menuItemId: item.id,
       name: item.name,
-      category: item.category?.name,
+      category: item.category?.name ?? null,
       station: resolvedStation,
+      source: "seed",
     });
   }
 }
@@ -320,7 +322,7 @@ async function main() {
       kitchenStation: "PIZZA" as KitchenStation | null,
       driver: "NETWORK_TCP",
       connectionJson: {
-        host: "192.168.1.100",
+        host: "192.168.0.100",
         port: 9100,
       },
       isDefault: false,
@@ -332,7 +334,7 @@ async function main() {
       kitchenStation: "PLATS" as KitchenStation | null,
       driver: "NETWORK_TCP",
       connectionJson: {
-        host: "192.168.1.101",
+        host: "192.168.0.101",
         port: 9100,
       },
       isDefault: false,
@@ -344,7 +346,7 @@ async function main() {
       kitchenStation: "SNACK" as KitchenStation | null,
       driver: "NETWORK_TCP",
       connectionJson: {
-        host: "192.168.1.102",
+        host: "192.168.0.102",
         port: 9100,
       },
       isDefault: false,
@@ -356,7 +358,7 @@ async function main() {
       kitchenStation: "CAFETERIA" as KitchenStation | null,
       driver: "NETWORK_TCP",
       connectionJson: {
-        host: "192.168.1.103",
+        host: "192.168.0.103",
         port: 9100,
       },
       isDefault: false,
@@ -376,27 +378,31 @@ async function main() {
   ]
 
   for (const printer of printers) {
-    await prisma.restaurantPrinter.upsert({
-      where: {
-        restaurantId_name: {
+    const existing =
+      (await prisma.restaurantPrinter.findFirst({
+        where: {
           restaurantId: restaurant.id,
-          name: printer.name,
+          role: printer.role,
+          kitchenStation: printer.kitchenStation,
         },
-      },
-      update: {
-        role: printer.role,
-        kitchenStation: printer.kitchenStation,
-        driver: printer.driver,
-        connectionJson: printer.connectionJson as Prisma.InputJsonValue,
-        isDefault: printer.isDefault,
-        isActive: true,
-      },
-      create: {
+      })) ??
+      (await prisma.restaurantPrinter.findFirst({
+        where: { restaurantId: restaurant.id, name: printer.name },
+      }));
+
+    // Never overwrite existing printers or their connectionJson.
+    if (existing) continue;
+
+    await prisma.restaurantPrinter.create({
+      data: {
         ...printer,
         connectionJson: printer.connectionJson as Prisma.InputJsonValue,
+        isActive: true,
       },
-    })
+    });
   }
+
+  await repairLegacyKitchenPrinters(prisma, restaurant.id);
 
   // eslint-disable-next-line no-console -- seed script
   console.log(
