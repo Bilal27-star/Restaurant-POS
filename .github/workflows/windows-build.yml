@@ -1,8 +1,6 @@
 # Builds Windows production installers (NSIS setup .exe + WiX .msi) for the Tauri v2 shell.
-# Runners already include MSVC; Node 20 + pnpm install workspace deps; Rust stable compiles the shell.
-#
-# Artifacts: after a successful run, open the workflow run → "Artifacts" → download
-# `restaurant-pos-windows-installers` (contains the .exe and .msi from `target/release/bundle/`).
+# Artifacts after success:
+# restaurant-pos-windows-installers (.exe + .msi)
 
 name: Windows Tauri production build
 
@@ -30,16 +28,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          lfs: true
 
-      - name: Pull Git LFS files
-        run: |
-          git lfs install
-          git lfs pull
-
-      - name: Enable Git long paths (Windows)
+      - name: Enable Git long paths
         run: git config --global core.longpaths true
 
       - name: Setup pnpm
@@ -47,7 +37,7 @@ jobs:
         with:
           run_install: false
 
-      - name: Install Node.js
+      - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: "20"
@@ -57,25 +47,26 @@ jobs:
       - name: Verify pnpm
         run: pnpm --version
 
-      - name: Validate Tauri config JSON
+      - name: Validate Tauri config
         run: node apps/tauri-pos/src-tauri/scripts/validate-tauri-config.mjs
 
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Cache Rust / Tauri build
+      - name: Cache Rust build
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: apps/tauri-pos/src-tauri
 
-      - name: Install workspace dependencies
+      - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
       - name: Verify installer binaries
         run: |
+          Write-Host "Checking installer files..."
           Get-ChildItem apps/tauri-pos/src-tauri/binaries
 
-      - name: Build Tauri Windows bundles (NSIS .exe + MSI)
+      - name: Build Windows bundles
         run: pnpm --filter @pos/tauri-pos run build:windows
 
       - name: List bundle outputs
@@ -83,7 +74,7 @@ jobs:
           Get-ChildItem -Recurse "apps/tauri-pos/src-tauri/target/release/bundle" -ErrorAction SilentlyContinue |
             Select-Object FullName, Length
 
-      - name: Upload Windows installers (artifacts)
+      - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: restaurant-pos-windows-installers
