@@ -277,6 +277,15 @@ export function createPosApiClient(opts: PosApiClientOptions) {
     settings: {
       getSystem: () => request<unknown>("/settings/system"),
       patchSystem: (body: unknown) => request<unknown>("/settings/system", { method: "PATCH", body: JSON.stringify(body) }),
+      exportBackup: () =>
+        request<{ filename: string; payload: unknown }>("/settings/backup"),
+      restoreBackup: (body: unknown) =>
+        request<{ restored: Record<string, number> }>("/settings/restore", {
+          method: "POST",
+          body: JSON.stringify(body),
+        }),
+      clearOperationalData: () =>
+        request<{ deleted: Record<string, number> }>("/settings/clear-data", { method: "POST", body: "{}" }),
     },
 
     shifts: {
@@ -293,6 +302,16 @@ export function createPosApiClient(opts: PosApiClientOptions) {
       categories: () => request<unknown[]>("/expenses/categories"),
       list: (shiftId: string) => request<unknown[]>(`/expenses/?shiftId=${encodeURIComponent(shiftId)}`),
       create: (body: unknown) => request<unknown>("/expenses/", { method: "POST", body: JSON.stringify(body) }),
+    },
+
+    printers: {
+      list: () => request<unknown[]>("/printers"),
+      discover: () => request<unknown[]>("/printers/discover"),
+      testConnection: (body: { host: string; port?: number }) =>
+        request<{ success: true; latency: number } | { success: false; error: string }>(
+          "/printers/test",
+          { method: "POST", body: JSON.stringify(body) },
+        ),
     },
 
     print: {

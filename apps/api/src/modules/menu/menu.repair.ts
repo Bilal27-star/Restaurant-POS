@@ -1,40 +1,28 @@
-export async function repairKitchenStations(prisma: any): Promise<void> {
+import type { PrismaClient } from "@pos/database";
+
+import { resolveKitchenStation } from "./kitchen-station.js";
+
+export async function repairKitchenStations(prisma: PrismaClient): Promise<void> {
   const items = await prisma.menuItem.findMany({
-    include: {
-      category: true,
-    },
+    where: { kitchenStation: null, deletedAt: null },
+    include: { category: true },
   });
 
   for (const item of items) {
-    if (item.kitchenStation) continue;
+    const station = resolveKitchenStation(item.category?.name, item.name);
+    if (!station) continue;
 
-    const category = (item.category?.name || "").toLowerCase();
-    const name = (item.name || "").toLowerCase();
+    await prisma.menuItem.update({
+      where: { id: item.id },
+      data: { kitchenStation: station },
+    });
 
-    let station: string | null = null;
-
-    if (category.includes("pizza") || name.includes("mergue")) {
-      station = "PIZZA";
-    } else if (
-      category.includes("entrée") ||
-      category.includes("plat") ||
-      category.includes("poisson") ||
-      name.includes("salade")
-    ) {
-      station = "PLATS";
-    } else if (category.includes("snack") || category.includes("burger") || category.includes("sandwich")) {
-      station = "SNACK";
-    } else if (category.includes("boisson") || category.includes("drink") || name.includes("jus")) {
-      station = "CAFETERIA";
-    }
-
-    if (station) {
-      await prisma.menuItem.update({
-        where: { id: item.id },
-        data: { kitchenStation: station },
-      });
-
-      console.log("REPAIRED", item.name, station);
-    }
+    console.warn("[STATION RESOLVED]", {
+      menuItemId: item.id,
+      name: item.name,
+      category: item.category?.name ?? null,
+      station,
+      source: "menu.repair",
+    });
   }
 }

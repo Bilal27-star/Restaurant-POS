@@ -2,7 +2,6 @@ import {
   Building2,
   CircleDollarSign,
   Database,
-  HardDrive,
   Pencil,
   Printer,
   RotateCcw,
@@ -10,8 +9,7 @@ import {
   Upload,
   Users,
 } from "lucide-react";
-import { useCallback, useEffect, useState, useMemo } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { PermissionCodes } from "@pos/contracts";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -27,9 +25,13 @@ import { getAppApi } from "@/lib/app-api";
 import { isTauriDesktop } from "@/lib/desktop/tauri-host";
 import { fr } from "@/lib/locale/fr";
 import { cn } from "@/lib/utils";
+import { PrinterSettingsPanel } from "@/components/settings/printer-settings-panel";
 import { PrinterManager } from "@/services/printing";
+import { usePrintersQuery } from "@/hooks/use-printer-queries";
 import { useUsersQuery, useUserMutations } from "@/hooks/use-users-queries";
 import { useSystemSettingsQuery, useSystemSettingsMutations } from "@/hooks/use-settings-queries";
+import { useSettingsDataMutations } from "@/hooks/use-settings-data-mutations";
+import { downloadJsonFile, readJsonFile } from "@/services/settings/data-backup";
 import {
   buildReceiptSettingsPatch,
   buildUserCreateBody,
@@ -44,7 +46,6 @@ const settingsCard = cn(
   "transition-[box-shadow,border-color,transform] duration-200 ease-out",
   "hover:border-zinc-600/55 hover:shadow-surface-hover hover:-translate-y-0.5 motion-reduce:hover:translate-y-0",
 );
-
 const fieldClass = cn(
   "h-12 w-full rounded-xl border border-pos-border-subtle bg-pos-depth/60 text-[15px] font-medium text-foreground placeholder:text-muted-foreground",
   "shadow-[inset_0_0_0_1px_rgb(129_140_248/0.12)] transition-[border-color,box-shadow] duration-200",
@@ -62,40 +63,6 @@ function statusLabel(s: CaisseEmployee["status"]): { label: string; className: s
   }
 }
 
-function formatPrinterConnection(cj: unknown): string {
-  if (!cj || typeof cj !== "object") return "—";
-  const o = cj as Record<string, unknown>;
-  const t = o.transport;
-  if (t === "tcp") return `${String(o.host ?? "?")}:${String(o.port ?? 9100)}`;
-  if (t === "usb") return String(o.devicePath ?? "USB");
-  if (t === "file") return String(o.path ?? "fichier");
-  return "JSON";
-}
-
-function printerRoleLabelFr(role: string): string {
-  switch (role) {
-    case "KITCHEN":
-      return "Cuisine";
-    case "RECEIPT":
-      return "Tickets";
-    case "CASHIER":
-      return "Caisse";
-    default:
-      return role;
-  }
-}
-
-type ApiPrinterRow = {
-  id: string;
-  name: string;
-  role: string;
-  driver: string;
-  connectionJson: unknown;
-  paperWidthChars: number;
-  isDefault: boolean;
-  isActive: boolean;
-};
-
 type SettingsApiUser = ApiUserListRow;
 
 export function SettingsPage() {
@@ -112,9 +79,11 @@ export function SettingsPage() {
   const systemSettingsQuery = useSystemSettingsQuery();
   const { data: systemData } = systemSettingsQuery;
   const { patchSystemSettings } = useSystemSettingsMutations();
-
-  const queryClient = useQueryClient();
+  const { exportBackup, restoreBackup, clearOperationalData } = useSettingsDataMutations();
+  const canManageSettings = usePermission(PermissionCodes.SETTINGS_MANAGE);
   const canThermalPrint = usePermission(PermissionCodes.PRINTING_USE);
+  const printersQuery = usePrintersQuery(canThermalPrint);
+  const restoreInputRef = useRef<HTMLInputElement>(null);
 
   const [restaurantName, setRestaurantName] = useState("");
   const [address, setAddress] = useState("");
@@ -148,27 +117,13 @@ export function SettingsPage() {
     return () => window.clearInterval(id);
   }, []);
 
-  const printersQuery = useQuery({
-    queryKey: ["print", "printers"],
-    queryFn: async () => (await getAppApi().print.listPrinters()) as ApiPrinterRow[],
-    enabled: canThermalPrint,
-    staleTime: 15_000,
-  });
-
-  const setDefaultPrinter = useMutation({
-    mutationFn: (printerId: string) => getAppApi().print.updatePrinter(printerId, { isDefault: true }),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["print", "printers"] });
-    },
-  });
-
   const [employeePanelOpen, setEmployeePanelOpen] = useState(false);
   const [editingEmployee, setEditingEmployee] = useState<CaisseEmployee | null>(null);
   const [editingUserRow, setEditingUserRow] = useState<SettingsApiUser | null>(null);
   const [clearOpen, setClearOpen] = useState(false);
+  const [restoreOpen, setRestoreOpen] = useState(false);
 
   const [toast, setToast] = useState<string | null>(null);
-  const [testBusyPrinterId, setTestBusyPrinterId] = useState<string | null>(null);
   const flash = useCallback((msg: string) => {
     setToast(msg);
     window.setTimeout(() => setToast(null), 3200);
@@ -215,27 +170,40 @@ export function SettingsPage() {
     }
   };
 
-  const runTestKitchen = async (printerId: string) => {
-    setTestBusyPrinterId(printerId);
+  const handleBackup = async () => {
+    if (!canManageSettings) return;
     try {
-      await PrinterManager.testKitchen(printerId);
-      flash(fr.settingsPage.printerTestOk);
-    } catch {
-      flash(fr.settingsPage.printerTestErr);
-    } finally {
-      setTestBusyPrinterId(null);
+      const result = await exportBackup.mutateAsync();
+      downloadJsonFile(result.filename, result.payload);
+      flash(fr.settingsPage.backupOk);
+    } catch (e: unknown) {
+      flash(e instanceof Error ? e.message : fr.settingsPage.backupErr);
     }
   };
 
-  const runTestReceipt = async (printerId: string) => {
-    setTestBusyPrinterId(printerId);
+  const handleRestorePick = () => {
+    if (!canManageSettings) return;
+    restoreInputRef.current?.click();
+  };
+
+  const handleRestoreFile = async (file: File) => {
     try {
-      await PrinterManager.testReceipt(printerId);
-      flash(fr.settingsPage.printerTestOk);
-    } catch {
-      flash(fr.settingsPage.printerTestErr);
-    } finally {
-      setTestBusyPrinterId(null);
+      const payload = await readJsonFile(file);
+      await restoreBackup.mutateAsync(payload);
+      setRestoreOpen(false);
+      flash(fr.settingsPage.restoreOk);
+    } catch (e: unknown) {
+      flash(e instanceof Error ? e.message : fr.settingsPage.restoreErr);
+    }
+  };
+
+  const handleClearData = async () => {
+    try {
+      await clearOperationalData.mutateAsync();
+      setClearOpen(false);
+      flash(fr.settingsPage.clearOk);
+    } catch (e: unknown) {
+      flash(e instanceof Error ? e.message : fr.settingsPage.clearErr);
     }
   };
 
@@ -441,117 +409,12 @@ export function SettingsPage() {
                 <p className="text-xs font-medium text-slate-400">{fr.settingsPage.printerHint}</p>
               </div>
             </div>
-            {canThermalPrint && isTauriDesktop() ? (
-              <div className="max-w-md rounded-xl border border-pos-border-subtle/80 bg-pos-depth/50 px-3 py-2.5 text-xs font-medium leading-snug text-slate-300">
-                <p className="font-semibold text-slate-200">{fr.settingsPage.printerThermalQueue}</p>
-                <p className={cn("mt-1", thermalWorkerRunning ? "text-emerald-300" : "text-amber-200/90")}>
-                  {thermalWorkerRunning ? fr.settingsPage.printerQueueRunning : fr.settingsPage.printerQueueStopped}
-                </p>
-              </div>
-            ) : null}
           </div>
-
-          {!canThermalPrint ? (
-            <p className="text-sm font-medium leading-relaxed text-amber-200/90">{fr.settingsPage.printerNoPermission}</p>
-          ) : printersQuery.isLoading ? (
-            <p className="text-sm text-slate-400">…</p>
-          ) : printersQuery.isError ? (
-            <p className="text-sm font-medium text-rose-300">{fr.settingsPage.printerLoadError}</p>
-          ) : (printersQuery.data?.length ?? 0) === 0 ? (
-            <p className="text-sm font-medium leading-relaxed text-slate-400">{fr.settingsPage.printerEmpty}</p>
-          ) : (
-            <ul className="space-y-3">
-              {printersQuery.data!.map((p) => {
-                const isKitchen = p.role === "KITCHEN";
-                const isReceiptStation = p.role === "RECEIPT" || p.role === "CASHIER";
-                const testBusy = testBusyPrinterId === p.id;
-                const defaultBusy = setDefaultPrinter.isPending && setDefaultPrinter.variables === p.id;
-                return (
-                  <li
-                    key={p.id}
-                    className="flex flex-col gap-3 rounded-xl border border-pos-border-subtle/80 bg-pos-depth/40 px-4 py-3.5"
-                  >
-                    <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-                      <div className="flex min-w-0 items-start gap-3">
-                        <HardDrive className="mt-0.5 size-4 shrink-0 text-slate-500" aria-hidden />
-                        <div className="min-w-0">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <p className="font-semibold text-white">{p.name}</p>
-                            <span className="rounded-md border border-white/10 bg-white/[0.06] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-slate-300">
-                              {printerRoleLabelFr(p.role)}
-                            </span>
-                            {p.isDefault ? (
-                              <span className="rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-emerald-200">
-                                {fr.settingsPage.printerDefaultBadge}
-                              </span>
-                            ) : null}
-                            {!p.isActive ? (
-                              <span className="rounded-md border border-zinc-600/50 bg-zinc-800/80 px-2 py-0.5 text-[10px] font-bold uppercase text-zinc-400">
-                                {fr.settingsPage.offline}
-                              </span>
-                            ) : null}
-                          </div>
-                          <p className="mt-1 font-mono text-xs tabular-nums text-slate-400">{formatPrinterConnection(p.connectionJson)}</p>
-                          <p className="mt-0.5 text-[11px] text-slate-500">
-                            {p.driver} · {p.paperWidthChars} cols
-                          </p>
-                        </div>
-                      </div>
-                      <div className="flex flex-wrap gap-2 sm:justify-end">
-                        {isKitchen ? (
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            disabled={!p.isActive || testBusy}
-                            className="h-9 rounded-lg border-pos-border-subtle bg-pos-glass/80 text-xs font-semibold"
-                            onClick={() => void runTestKitchen(p.id)}
-                          >
-                            {testBusy ? fr.settingsPage.printerTesting : fr.settingsPage.printerTestKitchen}
-                          </Button>
-                        ) : null}
-                        {isReceiptStation ? (
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            disabled={!p.isActive || testBusy}
-                            className="h-9 rounded-lg border-pos-border-subtle bg-pos-glass/80 text-xs font-semibold"
-                            onClick={() => void runTestReceipt(p.id)}
-                          >
-                            {testBusy ? fr.settingsPage.printerTesting : fr.settingsPage.printerTestReceipt}
-                          </Button>
-                        ) : null}
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          disabled={!p.isActive || defaultBusy || p.isDefault}
-                          className="h-9 rounded-lg border-pos-border-subtle bg-pos-glass/80 text-xs font-semibold"
-                          onClick={() => setDefaultPrinter.mutate(p.id)}
-                        >
-                          {defaultBusy ? "…" : fr.settingsPage.printerSetDefault}
-                        </Button>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2 border-t border-white/[0.06] pt-2">
-                      <span className="relative flex size-2.5">
-                        <span
-                          className={cn(
-                            "absolute inset-0 rounded-full",
-                            p.isActive ? "bg-emerald-400 shadow-[0_0_10px_2px_rgba(52,211,153,0.45)]" : "bg-zinc-600",
-                          )}
-                        />
-                      </span>
-                      <span className="text-xs font-semibold text-emerald-200/90">
-                        {p.isActive ? fr.settingsPage.connected : fr.settingsPage.offline}
-                      </span>
-                    </div>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
+          <PrinterSettingsPanel
+            canThermalPrint={canThermalPrint}
+            thermalWorkerRunning={thermalWorkerRunning}
+            onToast={flash}
+          />
         </section>
 
         <section className={settingsCard} aria-labelledby="settings-system">
@@ -571,24 +434,38 @@ export function SettingsPage() {
               type="button"
               variant="outline"
               className="h-11 rounded-xl border-pos-border-subtle bg-pos-depth/50 px-5 text-sm font-semibold text-foreground shadow-sm transition hover:bg-pos-glass/80 hover:shadow-surface-xs"
-              onClick={() => flash(fr.settingsPage.backupToast)}
+              disabled={!canManageSettings || exportBackup.isPending}
+              onClick={() => void handleBackup()}
             >
               <Upload className="mr-2 size-4 opacity-90" aria-hidden />
-              {fr.settingsPage.backup}
+              {exportBackup.isPending ? fr.settingsPage.backupRunning : fr.settingsPage.backup}
             </Button>
             <Button
               type="button"
               variant="outline"
               className="h-11 rounded-xl border-pos-border-subtle bg-pos-depth/50 px-5 text-sm font-semibold text-foreground shadow-sm transition hover:bg-pos-glass/80 hover:shadow-surface-xs"
-              onClick={() => flash(fr.settingsPage.restoreToast)}
+              disabled={!canManageSettings || restoreBackup.isPending}
+              onClick={() => setRestoreOpen(true)}
             >
               <RotateCcw className="mr-2 size-4 opacity-90" aria-hidden />
-              {fr.settingsPage.restore}
+              {restoreBackup.isPending ? fr.settingsPage.restoreRunning : fr.settingsPage.restore}
             </Button>
+            <input
+              ref={restoreInputRef}
+              type="file"
+              accept="application/json,.json"
+              className="hidden"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                e.target.value = "";
+                if (file) void handleRestoreFile(file);
+              }}
+            />
             <Button
               type="button"
               variant="outline"
               className="h-11 rounded-xl border-rose-500/25 bg-rose-500/[0.08] px-5 text-sm font-semibold text-rose-100 shadow-sm transition hover:border-rose-400/35 hover:bg-rose-500/15"
+              disabled={!canManageSettings || clearOperationalData.isPending}
               onClick={() => setClearOpen(true)}
             >
               <Trash2 className="mr-2 size-4 opacity-90" aria-hidden />
@@ -641,13 +518,23 @@ export function SettingsPage() {
       />
 
       <ConfirmDialog
+        open={restoreOpen}
+        onOpenChange={setRestoreOpen}
+        title={fr.settingsPage.restoreTitle}
+        description={fr.settingsPage.restoreDesc}
+        confirmLabel={fr.settingsPage.restoreConfirm}
+        destructive
+        onConfirm={handleRestorePick}
+      />
+
+      <ConfirmDialog
         open={clearOpen}
         onOpenChange={setClearOpen}
         title={fr.settingsPage.clearTitle}
         description={fr.settingsPage.clearDesc}
         confirmLabel={fr.settingsPage.clearConfirm}
         destructive
-        onConfirm={() => flash(fr.settingsPage.clearToast)}
+        onConfirm={() => void handleClearData()}
       />
     </div>
     </PageQueryState>

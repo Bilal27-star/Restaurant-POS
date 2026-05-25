@@ -98,6 +98,7 @@ export class PrintingController {
     const body = req.body as {
       name: string;
       role: import("@prisma/client").PrinterRole;
+      kitchenStation?: import("@prisma/client").KitchenStation | null;
       driver?: string;
       connectionJson?: object;
       paperWidthChars?: number;
@@ -107,6 +108,7 @@ export class PrintingController {
     const data = await this.service.createPrinter(auth.restaurantId, {
       name: body.name,
       role: body.role,
+      kitchenStation: body.kitchenStation ?? null,
       driver: body.driver ?? "RAW_ESCPOS",
       connectionJson: body.connectionJson ?? {},
       paperWidthChars: body.paperWidthChars ?? 32,
@@ -122,6 +124,7 @@ export class PrintingController {
     const body = req.body as {
       name?: string;
       role?: import("@prisma/client").PrinterRole;
+      kitchenStation?: import("@prisma/client").KitchenStation | null;
       driver?: string;
       connectionJson?: object;
       paperWidthChars?: number;

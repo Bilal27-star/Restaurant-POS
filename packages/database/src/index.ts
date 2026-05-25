@@ -1,5 +1,20 @@
 export { getPrisma, prisma, resetPrismaClient } from "./client.js";
 export { defaultSystemSettingsJson, type DefaultSystemSettings } from "./default-settings.js";
+export {
+  isLegacyKitchenPrinter,
+  repairLegacyKitchenPrinters,
+  type PrinterRepairRow,
+} from "./printer-repair.js";
+export {
+  RESTAURANT_BACKUP_VERSION,
+  clearRestaurantOperationalData,
+  exportRestaurantBackup,
+  restoreRestaurantBackup,
+  type RestaurantBackupExportResult,
+  type RestaurantBackupPayload,
+  type RestaurantBackupRestoreResult,
+  type RestaurantDataClearResult,
+} from "./restaurant-backup.js";
 
 // Re-export Prisma namespace, PrismaClient, and all generated enum types
 // so consumers can import from "@pos/database" rather than "@prisma/client" directly.

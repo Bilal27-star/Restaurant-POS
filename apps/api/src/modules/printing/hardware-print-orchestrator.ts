@@ -1,21 +1,14 @@
-import type { PaymentMethod, KitchenStation, Prisma, RestaurantPrinter } from "@pos/database";
+import type { PaymentMethod, KitchenStation, Prisma } from "@pos/database";
+
+type RestaurantPrinter = Prisma.RestaurantPrinterGetPayload<Record<string, never>>;
 
 import type { CustomerReceiptDocument, KitchenTicketDocument, TableTicketDocument } from "../../core/printing/documents/types.js";
 import { prisma } from "../../prisma/index.js";
+import { resolveKitchenStation } from "../menu/kitchen-station.js";
 import type { OrderWithRelations } from "../orders/orders.repository.js";
 import { buildKitchenTicketDto, buildTableTicketDto } from "../orders/printing/order-print-dtos.js";
 import { PrintingRepository } from "./printing.repository.js";
 import { PrintingService } from "./printing.service.js";
-
-const KITCHEN_STATION_CONFIG: Record<
-  KitchenStation,
-  { name: string; host: string; port: number }
-> = {
-  PIZZA: { name: "Pizza Printer", host: "192.168.1.100", port: 9100 },
-  PLATS: { name: "Plats Printer", host: "192.168.1.101", port: 9100 },
-  SNACK: { name: "Snack Printer", host: "192.168.1.102", port: 9100 },
-  CAFETERIA: { name: "Cafeteria Printer", host: "192.168.1.103", port: 9100 },
-};
 
 function modifierLabel(m: { label: string; priceDelta: string }): string {
   if (!m.priceDelta || m.priceDelta === "0.00") return m.label;
@@ -80,45 +73,12 @@ export class HardwarePrintOrchestrator {
     });
   }
 
-  /** Station kitchen printer — always NETWORK_TCP with fixed host per station. */
+  /** Station kitchen printer: DB by `kitchenStation`, else hardcoded seed defaults. */
   private async resolveKitchenStationPrinter(
     restaurantId: string,
     station: KitchenStation,
   ): Promise<RestaurantPrinter> {
-    const cfg = KITCHEN_STATION_CONFIG[station];
-    if (!cfg) {
-      throw new Error(`Unknown kitchen station: ${station}`);
-    }
-
-    const connectionJson = { host: cfg.host, port: cfg.port };
-    const printerData = {
-      name: cfg.name,
-      role: "KITCHEN" as const,
-      kitchenStation: station,
-      driver: "NETWORK_TCP" as const,
-      connectionJson,
-      isActive: true,
-      isDefault: false,
-    };
-
-    const existingPrinter =
-      (await prisma.restaurantPrinter.findFirst({
-        where: { restaurantId, kitchenStation: station, isActive: true },
-      })) ??
-      (await prisma.restaurantPrinter.findFirst({
-        where: { restaurantId, name: cfg.name, isActive: true },
-      }));
-
-    if (existingPrinter) {
-      return prisma.restaurantPrinter.update({
-        where: { id: existingPrinter.id },
-        data: printerData,
-      });
-    }
-
-    return prisma.restaurantPrinter.create({
-      data: { restaurantId, ...printerData },
-    });
+    return this.printing.resolveKitchenStationPrinter(restaurantId, station);
   }
 
   /** Queue a station-specific kitchen ticket when the order is still open for prep. */
@@ -166,8 +126,17 @@ export class HardwarePrintOrchestrator {
     }
 
     if (!station) {
-      throw new Error("Missing kitchen station");
+      console.warn("[ORDER PRINT FAILED]", { restaurantId, orderId: order.id, reason: "missing_station" });
+      return;
     }
+
+    console.log("[ORDER PRINT START]", {
+      restaurantId,
+      orderId: order.id,
+      station,
+      itemCount: items.length,
+      kind: "KITCHEN_TICKET",
+    });
 
     const selectedPrinter = await this.resolveKitchenStationPrinter(restaurantId, station);
 
@@ -187,31 +156,29 @@ export class HardwarePrintOrchestrator {
       station,
     });
 
-    if (payload.kind === "KITCHEN_TICKET" && !payload.station) {
-      throw new Error("Missing kitchen station");
+    try {
+      await this.printing.enqueueJob({
+        restaurantId,
+        requestedByUserId: actorUserId,
+        kind: "KITCHEN_TICKET",
+        payload,
+        printerId: selectedPrinter.id,
+        priority: 5,
+      });
+      console.log("[ORDER PRINT SUCCESS]", {
+        restaurantId,
+        orderId: order.id,
+        station,
+        printerName: selectedPrinter.name,
+      });
+    } catch (err) {
+      console.error("[ORDER PRINT FAILED]", {
+        restaurantId,
+        orderId: order.id,
+        station,
+        err,
+      });
     }
-
-    console.log("PRINTER RESOLUTION", {
-      kind: payload.kind,
-      station: payload.station,
-      printer: selectedPrinter.name,
-      connection: selectedPrinter.connectionJson,
-    });
-
-    console.log("LOCKED PRINTER", selectedPrinter.name);
-
-    console.log("PRINT EXECUTION", {
-      printer: selectedPrinter.name,
-    });
-
-    await this.printing.enqueueJob({
-      restaurantId,
-      requestedByUserId: actorUserId,
-      kind: "KITCHEN_TICKET",
-      payload,
-      printerId: selectedPrinter.id,
-      priority: 5,
-    });
   }
 
   /** Queue a kitchen ticket when the order is still open for prep. */
@@ -255,34 +222,57 @@ export class HardwarePrintOrchestrator {
       if (!it.menuItemId) continue;
       const menuItem = await prisma.menuItem.findUnique({
         where: { id: it.menuItemId },
-        select: { kitchenStation: true },
+        select: {
+          kitchenStation: true,
+          name: true,
+          category: { select: { name: true } },
+        },
       });
+      if (!menuItem) continue;
 
-      if (!menuItem?.kitchenStation) continue;
-
-      const existing = kitchenGroups.get(menuItem.kitchenStation) ?? [];
-      existing.push(it);
-      kitchenGroups.set(menuItem.kitchenStation, existing);
-    }
-
-    for (const [station, items] of kitchenGroups) {
+      let station = menuItem.kitchenStation;
       if (!station) {
-        throw new Error("Missing kitchen station");
+        station = resolveKitchenStation(menuItem.category?.name, menuItem.name);
+        if (station) {
+          console.warn("[STATION RESOLVED]", {
+            menuItemId: it.menuItemId,
+            name: menuItem.name,
+            category: menuItem.category?.name ?? null,
+            station,
+            source: "hardware-print-orchestrator",
+          });
+        }
       }
-      await this.enqueueKitchenStationAsync(
-        restaurantId,
-        actorUserId,
-        order,
-        station,
-        items.map((it) => ({
-          quantity: it.quantity,
-          nameSnapshot: it.nameSnapshot,
-          kitchenNotes: it.kitchenNotes,
-          removedIngredients: it.removedIngredients,
-          modifiers: it.modifiers.map((m) => ({ label: m.label, priceDelta: m.priceDelta })),
-        })),
-      );
+      if (!station) continue;
+
+      const existing = kitchenGroups.get(station) ?? [];
+      existing.push(it);
+      kitchenGroups.set(station, existing);
     }
+
+    await Promise.allSettled(
+      Array.from(kitchenGroups.entries()).map(async ([station, items]) => {
+        if (!station) return;
+        try {
+          await this.enqueueKitchenStationAsync(
+            restaurantId,
+            actorUserId,
+            order,
+            station,
+            items.map((it) => ({
+              quantity: it.quantity,
+              nameSnapshot: it.nameSnapshot,
+              kitchenNotes: it.kitchenNotes,
+              removedIngredients: it.removedIngredients,
+              modifiers: it.modifiers.map((m) => ({ label: m.label, priceDelta: m.priceDelta })),
+            })),
+          );
+        } catch (err) {
+          // Retain existing logs if any errors occur
+          console.error("[hardware-print] kitchen station enqueue failed", { restaurantId, station, orderId: order.id, err });
+        }
+      })
+    );
   }
 
   private async enqueueReceiptAsync(input: {
@@ -294,8 +284,6 @@ export class HardwarePrintOrchestrator {
   }): Promise<void> {
     const selectedPrinter = await this.printerRepo.findDefaultActivePrinterForReceipt(input.restaurantId);
     if (!selectedPrinter) return;
-
-    console.log("LOCKED PRINTER", selectedPrinter.name);
 
     const settings = await prisma.systemSettings.findUnique({
       where: { restaurantId: input.restaurantId },
@@ -343,10 +331,6 @@ export class HardwarePrintOrchestrator {
       cashierName: cashier?.fullName ?? null,
       openCashDrawerBeforeCut: input.openCashDrawer,
     };
-
-    console.log("PRINT EXECUTION", {
-      printer: selectedPrinter.name,
-    });
 
     await this.printing.enqueueJob({
       restaurantId: input.restaurantId,
@@ -407,17 +391,12 @@ export class HardwarePrintOrchestrator {
       footerNote: "Ticket table — présentation caisse",
     };
 
-    console.log("PRINTER RESOLUTION", {
+    console.log("[PRINTER RESOLVED]", {
+      restaurantId,
       kind: doc.kind,
-      station: undefined,
-      printer: selectedPrinter.name,
+      printerId: selectedPrinter.id,
+      printerName: selectedPrinter.name,
       connection: selectedPrinter.connectionJson,
-    });
-
-    console.log("LOCKED PRINTER", selectedPrinter.name);
-
-    console.log("PRINT EXECUTION", {
-      printer: selectedPrinter.name,
     });
 
     await this.printing.enqueueJob({
