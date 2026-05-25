@@ -1,7 +1,3 @@
-# Builds Windows production installers (NSIS setup .exe + WiX .msi) for the Tauri v2 shell.
-# Artifacts after success:
-# restaurant-pos-windows-installers (.exe + .msi)
-
 name: Windows Tauri production build
 
 on:
@@ -26,7 +22,7 @@ jobs:
         shell: pwsh
 
     steps:
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v4
 
       - name: Enable Git long paths
@@ -37,23 +33,17 @@ jobs:
         with:
           run_install: false
 
-      - name: Setup Node.js
+      - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: "20"
           cache: pnpm
           cache-dependency-path: pnpm-lock.yaml
 
-      - name: Verify pnpm
-        run: pnpm --version
-
-      - name: Validate Tauri config
-        run: node apps/tauri-pos/src-tauri/scripts/validate-tauri-config.mjs
-
-      - name: Install Rust stable
+      - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Cache Rust build
+      - name: Cache Rust
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: apps/tauri-pos/src-tauri
@@ -61,18 +51,23 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Verify installer binaries
+      # الحل الجذري: تحميل WebView2 تلقائيا داخل GitHub
+      - name: Download WebView2 installer
         run: |
-          Write-Host "Checking installer files..."
+          New-Item -ItemType Directory -Force `
+          -Path apps/tauri-pos/src-tauri/binaries
+
+          Invoke-WebRequest `
+          -Uri "https://go.microsoft.com/fwlink/p/?LinkId=2124703" `
+          -OutFile "apps/tauri-pos/src-tauri/binaries/MicrosoftEdgeWebView2RuntimeInstallerX64.exe"
+
           Get-ChildItem apps/tauri-pos/src-tauri/binaries
+
+      - name: Validate config
+        run: node apps/tauri-pos/src-tauri/scripts/validate-tauri-config.mjs
 
       - name: Build Windows bundles
         run: pnpm --filter @pos/tauri-pos run build:windows
-
-      - name: List bundle outputs
-        run: |
-          Get-ChildItem -Recurse "apps/tauri-pos/src-tauri/target/release/bundle" -ErrorAction SilentlyContinue |
-            Select-Object FullName, Length
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
@@ -82,4 +77,3 @@ jobs:
             apps/tauri-pos/src-tauri/target/release/bundle/nsis/*.exe
             apps/tauri-pos/src-tauri/target/release/bundle/msi/*.msi
           if-no-files-found: error
-          retention-days: 14
