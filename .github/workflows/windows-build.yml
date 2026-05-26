@@ -22,59 +22,50 @@ jobs:
         shell: pwsh
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Enable Git long paths
-        run: git config --global core.longpaths true
+      - run: git config --global core.longpaths true
 
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v4
         with:
           run_install: false
 
-      - name: Setup Node
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: "20"
           cache: pnpm
           cache-dependency-path: pnpm-lock.yaml
 
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@stable
 
-      - name: Cache Rust
-        uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@v2
         with:
           workspaces: apps/tauri-pos/src-tauri
 
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+      - run: pnpm install --frozen-lockfile
 
-      - name: Validate Tauri config
-        run: node apps/tauri-pos/src-tauri/scripts/validate-tauri-config.mjs
+      - run: node apps/tauri-pos/src-tauri/scripts/validate-tauri-config.mjs
 
-      - name: Create binaries folder
-        run: |
-          New-Item -ItemType Directory -Force -Path apps/tauri-pos/src-tauri/binaries
+      - name: Create binaries directory
+        run: New-Item -ItemType Directory -Force -Path apps/tauri-pos/src-tauri/binaries
 
       - name: Download WebView2 installer
         run: |
           Invoke-WebRequest -Uri "https://go.microsoft.com/fwlink/p/?LinkId=2124703" -OutFile "apps/tauri-pos/src-tauri/binaries/MicrosoftEdgeWebView2RuntimeInstallerX64.exe"
 
-      - name: Verify binaries
+      - name: List binaries directory
+        run: Get-ChildItem apps/tauri-pos/src-tauri/binaries
+
+      - name: Assert WebView2 installer exists
         run: |
-          $webview2 = "apps/tauri-pos/src-tauri/binaries/MicrosoftEdgeWebView2RuntimeInstallerX64.exe"
-          if (-not (Test-Path $webview2)) {
-            throw "Missing required file: $webview2"
+          if (!(Test-Path "apps/tauri-pos/src-tauri/binaries/MicrosoftEdgeWebView2RuntimeInstallerX64.exe")) {
+            throw "WebView2 installer missing"
           }
-          Get-ChildItem apps/tauri-pos/src-tauri/binaries
 
       - name: Build Windows bundles
         run: pnpm --filter @pos/tauri-pos run build:windows
 
-      - name: Upload installers
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
           name: restaurant-pos-windows-installers
           path: |
