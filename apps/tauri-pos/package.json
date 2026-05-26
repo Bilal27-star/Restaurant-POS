@@ -11,7 +11,8 @@
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
     "tauri:build": "tauri build",
-    "validate:tauri-config": "node src-tauri/scripts/validate-tauri-config.mjs"
+    "validate:tauri-config": "node src-tauri/scripts/validate-tauri-config.mjs",
+    "ensure:installer-binaries": "node src-tauri/scripts/ensure-installer-binaries.mjs"
   },
   "dependencies": {
     "@pos/web": "file:../web"
