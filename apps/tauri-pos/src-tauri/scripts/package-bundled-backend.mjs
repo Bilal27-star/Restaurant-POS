@@ -418,6 +418,11 @@ function writeBundledApi() {
   if (!pkg.dependencies["embedded-postgres"]) {
     pkg.dependencies["embedded-postgres"] = "18.3.0-beta.17";
   }
+  // Prisma CLI is required at build time for `prisma generate` inside the bundle.
+  // The API app depends on `@prisma/client`, but the CLI is intentionally added here for bundling.
+  if (!pkg.dependencies["prisma"]) {
+    pkg.dependencies["prisma"] = "^6.0.0";
+  }
 
   fs.writeFileSync(path.join(bundledApi, "package.json"), `${JSON.stringify(pkg, null, 2)}\n`);
 
@@ -563,6 +568,15 @@ function writeBundledApi() {
   assertBundledRuntimeLayout(bundledApi);
 
   writePosBundledManifest(bundledApi);
+
+  // Also ship a top-level copy for installer/runtime diagnostics.
+  // (The runtime itself reads from `resources/bundled-api/dist/desktop-runtime.js`.)
+  const bundledRuntime = path.join(bundledApi, "dist", "desktop-runtime.js");
+  const topLevelRuntime = path.join(resources, "desktop-runtime.js");
+  if (!fs.existsSync(bundledRuntime)) {
+    throw new Error(`package-bundled-backend: missing ${bundledRuntime}`);
+  }
+  fs.copyFileSync(bundledRuntime, topLevelRuntime);
 }
 
 function writePosBundledManifest(bundleRoot) {
