@@ -247,7 +247,7 @@ export class RealtimeHub {
 
   publishStaffDataChanged(
     restaurantId: string,
-    input: { domains: ReadonlyArray<"tables" | "menu" | "settings" | "shifts"> },
+    input: { domains: ReadonlyArray<"tables" | "menu" | "settings" | "shifts" | "orders" | "users"> },
   ): void {
     const payload = {
       v: 1 as const,

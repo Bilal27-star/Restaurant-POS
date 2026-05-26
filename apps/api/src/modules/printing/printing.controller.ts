@@ -34,10 +34,10 @@ export class PrintingController {
     };
     const data = await this.service.enqueueJob({
       restaurantId: auth.restaurantId,
-      requestedByUserId: auth.userId,
+      requestedByUserId: auth.userId ?? null,
       kind: body.kind,
       payload: body.payload,
-      printerId: body.printerId,
+      printerId: body.printerId ?? "",
       priority: body.priority,
       maxAttempts: body.maxAttempts,
     });
