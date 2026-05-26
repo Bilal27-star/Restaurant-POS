@@ -34,6 +34,23 @@ const NODE_VER = process.env.DESKTOP_NODE_VERSION ?? "20.18.1";
 
 
 const skipApiBuild = process.argv.includes("--skip-api-build");
+const apiDist = path.join(apiRoot, "dist");
+
+function bundledApiRuntimeExists() {
+  return fs.existsSync(path.join(bundledApi, "dist", "desktop-runtime.js"));
+}
+
+function apiDistRuntimeExists() {
+  return fs.existsSync(path.join(apiDist, "desktop-runtime.js"));
+}
+
+function syncTopLevelDesktopRuntimeFromBundledApi() {
+  const bundledRuntime = path.join(bundledApi, "dist", "desktop-runtime.js");
+  const topLevelRuntime = path.join(resources, "desktop-runtime.js");
+  if (!fs.existsSync(bundledRuntime)) return false;
+  fs.copyFileSync(bundledRuntime, topLevelRuntime);
+  return true;
+}
 
 function runPnpm(args, options = {}) {
   const pnpmExec = process.env.npm_execpath;
@@ -394,7 +411,18 @@ function patchPackageExportsDefaultToDist(pkgDir) {
 
 function ensureApiBuilt() {
   if (skipApiBuild) {
-    console.log("package-bundled-backend: --skip-api-build set, skipping API tsc");
+    if (bundledApiRuntimeExists()) {
+      console.log("package-bundled-backend: --skip-api-build set, using existing bundled-api resources");
+      return;
+    }
+    if (apiDistRuntimeExists()) {
+      console.log("package-bundled-backend: --skip-api-build set, skipping API tsc (api dist already present)");
+      return;
+    }
+    console.log("package-bundled-backend: --skip-api-build set, but bundled-api missing; building API staging automatically");
+    runPnpm(["--filter", "@pos/api", "run", "build"], {
+      cwd: root,
+    });
     return;
   }
   runPnpm(["--filter", "@pos/api", "run", "build"], {
@@ -426,10 +454,10 @@ function writeBundledApi() {
 
   fs.writeFileSync(path.join(bundledApi, "package.json"), `${JSON.stringify(pkg, null, 2)}\n`);
 
-  const distSrc = path.join(apiRoot, "dist");
+  const distSrc = apiDist;
   if (!fs.existsSync(path.join(distSrc, "desktop-runtime.js"))) {
     console.error(
-      "package-bundled-backend: apps/api/dist/desktop-runtime.js missing. Run `pnpm --filter @pos/api run build` or remove --skip-api-build.",
+      "package-bundled-backend: apps/api/dist/desktop-runtime.js missing. Existing bundled-api not found, so API staging is required.",
     );
     process.exit(1);
   }
@@ -572,11 +600,9 @@ function writeBundledApi() {
   // Also ship a top-level copy for installer/runtime diagnostics.
   // (The runtime itself reads from `resources/bundled-api/dist/desktop-runtime.js`.)
   const bundledRuntime = path.join(bundledApi, "dist", "desktop-runtime.js");
-  const topLevelRuntime = path.join(resources, "desktop-runtime.js");
-  if (!fs.existsSync(bundledRuntime)) {
+  if (!syncTopLevelDesktopRuntimeFromBundledApi()) {
     throw new Error(`package-bundled-backend: missing ${bundledRuntime}`);
   }
-  fs.copyFileSync(bundledRuntime, topLevelRuntime);
 }
 
 function writePosBundledManifest(bundleRoot) {
@@ -664,6 +690,11 @@ async function downloadEmbeddedNode() {
 
 validateTauriConfigOrExit();
 ensureApiBuilt();
-writeBundledApi();
+if (skipApiBuild && bundledApiRuntimeExists()) {
+  // Intentional skip with no API dist: trust previously packaged backend and keep build flow moving.
+  syncTopLevelDesktopRuntimeFromBundledApi();
+} else {
+  writeBundledApi();
+}
 await downloadEmbeddedNode();
 console.log("package-bundled-backend: done");
