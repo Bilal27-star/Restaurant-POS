@@ -182,7 +182,7 @@ function isLocalApiOrigin(origin: string): boolean {
 
 function buildDesktopRequestHeaders(): Record<string, string> {
   const origin = resolvedApiOrigin();
-  if (isTauriDesktop() || isLocalApiOrigin(origin)) {
+  if (isLocalApiOrigin(origin)) {
     return { "X-POS-Desktop-Client": "1" };
   }
   return {};
