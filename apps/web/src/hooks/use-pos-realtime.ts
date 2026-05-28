@@ -1,5 +1,5 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { io, type Socket } from "socket.io-client";
 
 import { useAuth } from "@/auth/auth-context";
@@ -39,9 +39,17 @@ const emptyBurst = (): BurstFlags => ({
 export function usePosRealtime() {
   const qc = useQueryClient();
   const { accessToken, ready } = useAuth();
+  const [runtimeVersion, setRuntimeVersion] = useState(0);
   const socketRef = useRef<Socket | null>(null);
   const burstTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const burstFlagsRef = useRef<BurstFlags>(emptyBurst());
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const onRuntimeRefresh = () => setRuntimeVersion((v) => v + 1);
+    window.addEventListener("pos-api-runtime-refresh", onRuntimeRefresh);
+    return () => window.removeEventListener("pos-api-runtime-refresh", onRuntimeRefresh);
+  }, []);
 
   useEffect(() => {
     if (!ready || !accessToken) {
@@ -157,5 +165,5 @@ export function usePosRealtime() {
       socket.disconnect();
       socketRef.current = null;
     };
-  }, [accessToken, qc, ready]);
+  }, [accessToken, qc, ready, runtimeVersion]);
 }

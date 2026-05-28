@@ -1,53 +1,22 @@
 import { createPosApiClient, type PosApiClient } from "@pos/api-client";
 import {
-  getConnectionMode,
-  getRemoteApiOrigin,
-  setConnectionMode,
-  setRemoteApiHost,
-  setRemoteApiPort,
-} from "@/lib/api-connection-config";
+  clearLanApiConfig,
+  getLanApiConfig,
+  getResolvedApiOrigin,
+  setLanApiConfig,
+} from "@/lib/lan-api-config";
 import { logDataFlow } from "@/lib/desktop/data-flow-log";
 import { applySanitizedOrdersApi } from "@/lib/orders-api";
 import { isTauriDesktop } from "./desktop/tauri-host";
 
 const ACCESS_KEY = "pos_access_token";
 
-/** Local API port (see `apps/api` `PORT` / `.env.example`). Override host with `VITE_API_ORIGIN`. */
-const DEFAULT_LOCAL_API_PORT = 4000;
-
 let client: PosApiClient | null = null;
 let clientOrigin: string | null = null;
-
-/**
- * Resolved API origin (scheme + host + port, no path). Used for REST, Socket.IO, and offline `/health`.
- * - `VITE_API_ORIGIN` wins when set.
- * - Tauri: fixed loopback host (no `window` during early init in some builds).
- * - Vite dev in the browser: use **same hostname** as the page (`localhost` vs `127.0.0.1`) so requests are not
- *   treated as cross-site vs `localhost:5173` → `127.0.0.1:4000` (cookies / PNA / devtools clarity).
- * - Production web build: empty string → same-origin as the deployed site (set `VITE_API_ORIGIN` if API is elsewhere).
- */
-function resolveLocalApiOrigin(): string {
-  if (isTauriDesktop()) {
-    return `http://127.0.0.1:${DEFAULT_LOCAL_API_PORT}`;
-  }
-  if (import.meta.env.DEV) {
-    if (typeof window !== "undefined") {
-      const h = window.location.hostname;
-      if (h) return `http://${h}:${DEFAULT_LOCAL_API_PORT}`;
-    }
-    return `http://127.0.0.1:${DEFAULT_LOCAL_API_PORT}`;
-  }
-  return "";
-}
+const API_RUNTIME_REFRESH_EVENT = "pos-api-runtime-refresh";
 
 export function resolvedApiOrigin(): string {
-  const v = import.meta.env.VITE_API_ORIGIN;
-  if (typeof v === "string" && v.length > 0) return v.replace(/\/$/, "");
-  if (getConnectionMode() === "remote") {
-    const remote = getRemoteApiOrigin();
-    if (remote) return remote;
-  }
-  return resolveLocalApiOrigin();
+  return getResolvedApiOrigin();
 }
 
 async function fetchHealthOk(origin: string, requestTimeoutMs: number): Promise<boolean> {
@@ -72,7 +41,7 @@ let desktopBackendReadyInflight: Promise<void> | null = null;
  * Rejects on `pos-backend-exit`, `pos-backend-startup-timeout`, or timeout.
  */
 export async function ensureDesktopBackendReady(options?: { timeoutMs?: number }): Promise<void> {
-  if (getConnectionMode() === "remote") return;
+  if (getLanApiConfig().mode === "remote") return;
   if (!isTauriDesktop()) return;
   const origin = resolvedApiOrigin();
   if (!origin) return;
@@ -261,22 +230,43 @@ export function resetAppApiClient(): void {
   clientOrigin = null;
 }
 
+export async function refreshApiRuntime(): Promise<void> {
+  const previousOrigin = clientOrigin ?? resolvedApiOrigin();
+  resetAppApiClient();
+  const nextOrigin = resolvedApiOrigin();
+
+  try {
+    const { appQueryClient } = await import("./app-query-client");
+    await appQueryClient.invalidateQueries();
+  } catch {
+    /* ignore query refresh failures */
+  }
+
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(
+      new CustomEvent(API_RUNTIME_REFRESH_EVENT, {
+        detail: { previousOrigin, nextOrigin },
+      }),
+    );
+  }
+}
+
 declare global {
   interface Window {
+    __POS_GET_API_CONFIG__?: () => { mode: "local" | "remote"; host: string; port: number };
     __POS_SET_REMOTE_API__?: (host: string, port?: number) => void;
     __POS_SET_LOCAL_API__?: () => void;
   }
 }
 
 if (typeof window !== "undefined") {
+  window.__POS_GET_API_CONFIG__ = () => getLanApiConfig();
   window.__POS_SET_REMOTE_API__ = (host: string, port = 4000) => {
-    setConnectionMode("remote");
-    setRemoteApiHost(host);
-    setRemoteApiPort(port);
-    window.location.reload();
+    setLanApiConfig({ mode: "remote", host, port });
+    void refreshApiRuntime();
   };
   window.__POS_SET_LOCAL_API__ = () => {
-    setConnectionMode("local");
-    window.location.reload();
+    clearLanApiConfig();
+    void refreshApiRuntime();
   };
 }

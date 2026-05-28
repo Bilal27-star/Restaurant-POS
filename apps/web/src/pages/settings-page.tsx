@@ -2,6 +2,7 @@ import {
   Building2,
   CircleDollarSign,
   Database,
+  Network,
   Pencil,
   Printer,
   RotateCcw,
@@ -21,7 +22,7 @@ import { usePermission } from "@/auth/use-permission";
 import { PageQueryState } from "@/components/data/page-query-state";
 import { PageShell } from "@/components/data/page-shell";
 import { usePageRouteDiagnostics } from "@/hooks/use-page-route-diagnostics";
-import { getAppApi } from "@/lib/app-api";
+import { getAppApi, refreshApiRuntime } from "@/lib/app-api";
 import { isTauriDesktop } from "@/lib/desktop/tauri-host";
 import { fr } from "@/lib/locale/fr";
 import { cn } from "@/lib/utils";
@@ -32,6 +33,12 @@ import { useUsersQuery, useUserMutations } from "@/hooks/use-users-queries";
 import { useSystemSettingsQuery, useSystemSettingsMutations } from "@/hooks/use-settings-queries";
 import { useSettingsDataMutations } from "@/hooks/use-settings-data-mutations";
 import { downloadJsonFile, readJsonFile } from "@/services/settings/data-backup";
+import {
+  clearLanApiConfig,
+  getLanApiConfig,
+  setLanApiConfig,
+  type LanApiMode,
+} from "@/lib/lan-api-config";
 import {
   buildReceiptSettingsPatch,
   buildUserCreateBody,
@@ -92,6 +99,11 @@ export function SettingsPage() {
   const [taxRate, setTaxRate] = useState("19");
   const [receiptHeader, setReceiptHeader] = useState("");
   const [receiptFooter, setReceiptFooter] = useState("");
+  const [apiMode, setApiMode] = useState<LanApiMode>(() => getLanApiConfig().mode);
+  const [apiHost, setApiHost] = useState(() => getLanApiConfig().host);
+  const [apiPort, setApiPort] = useState(() => String(getLanApiConfig().port || 4000));
+  const [testingApi, setTestingApi] = useState(false);
+  const [savingApi, setSavingApi] = useState(false);
 
   useEffect(() => {
     if (systemData) {
@@ -204,6 +216,63 @@ export function SettingsPage() {
       flash(fr.settingsPage.clearOk);
     } catch (e: unknown) {
       flash(e instanceof Error ? e.message : fr.settingsPage.clearErr);
+    }
+  };
+
+  const handleTestApiConnection = async () => {
+    if (apiMode !== "remote") {
+      flash("Mode local actif: aucune connexion LAN à tester.");
+      return;
+    }
+    const host = apiHost.trim();
+    if (!host) {
+      flash("Server IP est requis.");
+      return;
+    }
+    const parsedPort = Number.parseInt(apiPort, 10);
+    const port = Number.isFinite(parsedPort) && parsedPort > 0 && parsedPort <= 65535 ? parsedPort : 4000;
+    const base = `http://${host}:${port}`;
+
+    setTestingApi(true);
+    try {
+      const res = await fetch(`${base}/health`, { cache: "no-store" });
+      if (res.ok) {
+        flash(`Connexion OK: ${base}/health`);
+      } else {
+        flash(`Connexion échouée (${res.status}): ${base}/health`);
+      }
+    } catch (e: unknown) {
+      flash(e instanceof Error ? e.message : `Connexion échouée: ${base}/health`);
+    } finally {
+      setTestingApi(false);
+    }
+  };
+
+  const handleSaveApiConfiguration = async () => {
+    const host = apiHost.trim();
+    const parsedPort = Number.parseInt(apiPort, 10);
+    const port = Number.isFinite(parsedPort) && parsedPort > 0 && parsedPort <= 65535 ? parsedPort : 4000;
+
+    if (apiMode === "remote" && !host) {
+      flash("Server IP est requis pour le mode LAN Client.");
+      return;
+    }
+
+    setSavingApi(true);
+    try {
+      if (apiMode === "local") {
+        clearLanApiConfig();
+      } else {
+        setLanApiConfig({ mode: "remote", host, port });
+      }
+      if (typeof import.meta.env.VITE_API_ORIGIN === "string" && import.meta.env.VITE_API_ORIGIN.length > 0) {
+        flash("Configuration enregistrée (VITE_API_ORIGIN reste prioritaire).");
+      } else {
+        flash("Configuration réseau enregistrée.");
+      }
+      await refreshApiRuntime();
+    } finally {
+      setSavingApi(false);
     }
   };
 
@@ -415,6 +484,84 @@ export function SettingsPage() {
             thermalWorkerRunning={thermalWorkerRunning}
             onToast={flash}
           />
+        </section>
+
+        <section className={settingsCard} aria-labelledby="settings-network">
+          <div className="mb-6 flex items-center gap-3">
+            <div className="flex size-11 items-center justify-center rounded-xl bg-gradient-to-br from-cyan-500/20 to-blue-500/15 ring-1 ring-cyan-500/25">
+              <Network className="size-5 text-cyan-200" aria-hidden />
+            </div>
+            <div>
+              <h2 id="settings-network" className="text-lg font-bold tracking-tight text-white md:text-xl">
+                Network / LAN
+              </h2>
+              <p className="text-xs font-medium text-slate-400">Configure l'API locale ou un serveur LAN distant</p>
+            </div>
+          </div>
+          <div className="space-y-6">
+            <div className="space-y-2">
+              <label className="text-xs font-semibold text-slate-200" htmlFor="set-api-mode">
+                Mode
+              </label>
+              <select
+                id="set-api-mode"
+                value={apiMode}
+                onChange={(e) => setApiMode(e.target.value === "remote" ? "remote" : "local")}
+                className={cn(fieldClass, "pr-10")}
+              >
+                <option value="local">Local</option>
+                <option value="remote">LAN Client</option>
+              </select>
+            </div>
+            <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
+              <div className="space-y-2">
+                <label className="text-xs font-semibold text-slate-200" htmlFor="set-api-host">
+                  Server IP
+                </label>
+                <Input
+                  id="set-api-host"
+                  value={apiHost}
+                  onChange={(e) => setApiHost(e.target.value)}
+                  className={fieldClass}
+                  placeholder="192.168.1.50"
+                  disabled={apiMode === "local"}
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-xs font-semibold text-slate-200" htmlFor="set-api-port">
+                  Port
+                </label>
+                <Input
+                  id="set-api-port"
+                  type="number"
+                  value={apiPort}
+                  onChange={(e) => setApiPort(e.target.value)}
+                  className={fieldClass}
+                  placeholder="4000"
+                  disabled={apiMode === "local"}
+                />
+              </div>
+            </div>
+            <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap">
+              <Button
+                type="button"
+                variant="outline"
+                className="h-11 rounded-xl border-pos-border-subtle bg-pos-depth/50 px-5 text-sm font-semibold text-foreground shadow-sm transition hover:bg-pos-glass/80 hover:shadow-surface-xs"
+                onClick={() => void handleTestApiConnection()}
+                disabled={testingApi}
+              >
+                {testingApi ? "Test en cours…" : "Test Connection"}
+              </Button>
+              <Button
+                type="button"
+                className="h-11 rounded-xl border-0 bg-gradient-to-r from-[#7c3aed] to-[#db2777] px-5 text-sm font-bold text-white shadow-indigo-900/20 transition hover:from-[#8b5cf6] hover:to-[#ec4899] hover:shadow-surface-md active:scale-[0.99]"
+                onClick={() => void handleSaveApiConfiguration()}
+                disabled={savingApi}
+              >
+                {savingApi ? "Enregistrement…" : "Save Configuration"}
+              </Button>
+            </div>
+          </div>
         </section>
 
         <section className={settingsCard} aria-labelledby="settings-system">
