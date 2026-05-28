@@ -1,4 +1,11 @@
 import { createPosApiClient, type PosApiClient } from "@pos/api-client";
+import {
+  getConnectionMode,
+  getRemoteApiOrigin,
+  setConnectionMode,
+  setRemoteApiHost,
+  setRemoteApiPort,
+} from "@/lib/api-connection-config";
 import { logDataFlow } from "@/lib/desktop/data-flow-log";
 import { applySanitizedOrdersApi } from "@/lib/orders-api";
 import { isTauriDesktop } from "./desktop/tauri-host";
@@ -9,6 +16,7 @@ const ACCESS_KEY = "pos_access_token";
 const DEFAULT_LOCAL_API_PORT = 4000;
 
 let client: PosApiClient | null = null;
+let clientOrigin: string | null = null;
 
 /**
  * Resolved API origin (scheme + host + port, no path). Used for REST, Socket.IO, and offline `/health`.
@@ -18,9 +26,7 @@ let client: PosApiClient | null = null;
  *   treated as cross-site vs `localhost:5173` → `127.0.0.1:4000` (cookies / PNA / devtools clarity).
  * - Production web build: empty string → same-origin as the deployed site (set `VITE_API_ORIGIN` if API is elsewhere).
  */
-export function resolvedApiOrigin(): string {
-  const v = import.meta.env.VITE_API_ORIGIN;
-  if (typeof v === "string" && v.length > 0) return v.replace(/\/$/, "");
+function resolveLocalApiOrigin(): string {
   if (isTauriDesktop()) {
     return `http://127.0.0.1:${DEFAULT_LOCAL_API_PORT}`;
   }
@@ -32,6 +38,16 @@ export function resolvedApiOrigin(): string {
     return `http://127.0.0.1:${DEFAULT_LOCAL_API_PORT}`;
   }
   return "";
+}
+
+export function resolvedApiOrigin(): string {
+  const v = import.meta.env.VITE_API_ORIGIN;
+  if (typeof v === "string" && v.length > 0) return v.replace(/\/$/, "");
+  if (getConnectionMode() === "remote") {
+    const remote = getRemoteApiOrigin();
+    if (remote) return remote;
+  }
+  return resolveLocalApiOrigin();
 }
 
 async function fetchHealthOk(origin: string, requestTimeoutMs: number): Promise<boolean> {
@@ -56,6 +72,7 @@ let desktopBackendReadyInflight: Promise<void> | null = null;
  * Rejects on `pos-backend-exit`, `pos-backend-startup-timeout`, or timeout.
  */
 export async function ensureDesktopBackendReady(options?: { timeoutMs?: number }): Promise<void> {
+  if (getConnectionMode() === "remote") return;
   if (!isTauriDesktop()) return;
   const origin = resolvedApiOrigin();
   if (!origin) return;
@@ -203,7 +220,12 @@ function buildDesktopRequestHeaders(): Record<string, string> {
 }
 
 export function getAppApi(): PosApiClient {
+  const origin = apiBaseUrl();
+  if (client && clientOrigin !== origin) {
+    resetAppApiClient();
+  }
   if (!client) {
+    clientOrigin = origin;
     client = applySanitizedOrdersApi(
       createPosApiClient({
         baseUrl: apiBaseUrl(),
@@ -236,4 +258,25 @@ export function getAppApi(): PosApiClient {
 
 export function resetAppApiClient(): void {
   client = null;
+  clientOrigin = null;
+}
+
+declare global {
+  interface Window {
+    __POS_SET_REMOTE_API__?: (host: string, port?: number) => void;
+    __POS_SET_LOCAL_API__?: () => void;
+  }
+}
+
+if (typeof window !== "undefined") {
+  window.__POS_SET_REMOTE_API__ = (host: string, port = 4000) => {
+    setConnectionMode("remote");
+    setRemoteApiHost(host);
+    setRemoteApiPort(port);
+    window.location.reload();
+  };
+  window.__POS_SET_LOCAL_API__ = () => {
+    setConnectionMode("local");
+    window.location.reload();
+  };
 }

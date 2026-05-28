@@ -1,6 +1,7 @@
 import type { LoginRequest } from "@pos/api-client";
 import * as React from "react";
 
+import { getConnectionMode } from "@/lib/api-connection-config";
 import { ensureDesktopBackendReady, getAccessToken, getAppApi, resetAppApiClient, setAccessToken } from "@/lib/app-api";
 import { clearAppQueryCache } from "@/lib/app-query-client";
 
@@ -40,7 +41,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     let cancelled = false;
     void (async () => {
       try {
-        await ensureDesktopBackendReady();
+        if (getConnectionMode() !== "remote") {
+          await ensureDesktopBackendReady();
+        }
         if (cancelled) return;
         const m = await getAppApi().auth.me();
         if (!cancelled) {

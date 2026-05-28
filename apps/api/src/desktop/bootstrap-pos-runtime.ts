@@ -8,6 +8,7 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import dotenv from "dotenv";
+import { loadApiDotenv } from "../config/load-dotenv.js";
 import { createDesktopRuntimeLogger } from "./desktop-runtime-log.js";
 import {
   bootEmbeddedPostgres,
@@ -38,7 +39,7 @@ function loadRuntimeEnvFiles() {
   if (envFile) {
     dotenv.config({ path: envFile });
   }
-  dotenv.config();
+  loadApiDotenv();
 }
 
 function resolveBundleRoot(): string {

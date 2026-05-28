@@ -22,8 +22,7 @@ export async function startPosHttpServer(env: Env): Promise<{
   const { adminStatus } = await ensureInitialTenantIfEmpty(env, rootLogger);
   console.log(adminStatus === "created" ? "[BOOT] admin created" : "[BOOT] admin exists");
 
-  /** Desktop + local POS: bind loopback explicitly so `http://127.0.0.1:${PORT}` from Tauri/web always matches. */
-  const listenHost = "127.0.0.1";
+  const listenHost = env.LISTEN_HOST?.trim() || process.env.LISTEN_HOST?.trim() || "127.0.0.1";
 
   await new Promise<void>((resolve, reject) => {
     const onError = (err: NodeJS.ErrnoException) => {
@@ -52,8 +51,7 @@ export async function startPosHttpServer(env: Env): Promise<{
         "HTTP server listening",
       );
 
-      console.log(`[BOOT] API listening on ${listenHost}:${env.PORT}`);
-      console.log(`[BOOT] Health: http://${listenHost}:${env.PORT}/health`);
+      console.log(`API listening on:\nhttp://${listenHost}:${env.PORT}`);
 
       resolve();
     });

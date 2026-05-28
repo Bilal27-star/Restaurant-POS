@@ -5,6 +5,17 @@ import { DEFAULT_API_BASE_PATH } from "./constants.js";
 const envSchema = z
   .object({
     NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
+    /** HTTP bind address (`0.0.0.0` = LAN; set `127.0.0.1` in `.env` for localhost-only). */
+    LISTEN_HOST: z.preprocess(
+      (value) => {
+        if (typeof value === "string" && value.trim() !== "") {
+          return value.trim();
+        }
+        const fromProcess = process.env.LISTEN_HOST?.trim();
+        return fromProcess && fromProcess.length > 0 ? fromProcess : "0.0.0.0";
+      },
+      z.string().min(1),
+    ),
     PORT: z.coerce.number().int().positive().default(4000),
     DATABASE_URL: z.string().min(1, "DATABASE_URL is required for Prisma"),
     API_BASE_PATH: z.string().default(DEFAULT_API_BASE_PATH),

@@ -1,4 +1,4 @@
-import "dotenv/config";
+import "./config/load-dotenv-init.js";
 
 import { startDevEmbeddedPostgresIfEnabled, stopDevEmbeddedPostgresIfAny } from "./bootstrap/embedded-postgres-dev-boot.js";
 import { configureDesktopApiProcessEnv } from "./config/desktop-runtime.js";
