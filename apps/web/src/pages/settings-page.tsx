@@ -40,6 +40,10 @@ import {
   type LanApiMode,
 } from "@/lib/lan-api-config";
 import {
+  buildCashDrawerSettingsPatch,
+  readOpenCashDrawerAfterPayment,
+} from "@/lib/printing/cashier-receipt-settings";
+import {
   buildReceiptSettingsPatch,
   buildUserCreateBody,
   buildUserPatchBody,
@@ -99,6 +103,7 @@ export function SettingsPage() {
   const [taxRate, setTaxRate] = useState("19");
   const [receiptHeader, setReceiptHeader] = useState("");
   const [receiptFooter, setReceiptFooter] = useState("");
+  const [openCashDrawerAfterPayment, setOpenCashDrawerAfterPayment] = useState(true);
   const [apiMode, setApiMode] = useState<LanApiMode>(() => getLanApiConfig().mode);
   const [apiHost, setApiHost] = useState(() => getLanApiConfig().host);
   const [apiPort, setApiPort] = useState(() => String(getLanApiConfig().port || 4000));
@@ -116,6 +121,7 @@ export function SettingsPage() {
       const receiptLines = readReceiptLinesFromSettingsJson(sj);
       setReceiptHeader(receiptLines.header);
       setReceiptFooter(receiptLines.footer);
+      setOpenCashDrawerAfterPayment(readOpenCashDrawerAfterPayment(sj));
     }
   }, [systemData]);
 
@@ -174,6 +180,7 @@ export function SettingsPage() {
           currency,
           taxRate: parseFloat(taxRate) || 0,
           ...buildReceiptSettingsPatch(receiptHeader, receiptFooter, existingJson),
+          ...buildCashDrawerSettingsPatch(openCashDrawerAfterPayment),
         },
       });
       flash(fr.settingsPage.savedToast);
@@ -295,10 +302,10 @@ export function SettingsPage() {
         void printersQuery.refetch();
       }}
     >
-    <div className="relative pb-28 md:pb-32">
+    <div className="relative pb-10 md:pb-12">
       {toast ? (
         <div
-          className="fixed bottom-24 left-1/2 z-[90] max-w-md -translate-x-1/2 rounded-xl border border-pos-border-subtle bg-pos-depth/95 px-4 py-3 text-center text-sm font-semibold text-foreground shadow-surface-lg ring-1 ring-black/[0.06] backdrop-blur-md md:bottom-28"
+          className="fixed bottom-6 left-1/2 z-[90] max-w-md -translate-x-1/2 rounded-xl border border-pos-border-subtle bg-pos-depth/95 px-4 py-3 text-center text-sm font-semibold text-foreground shadow-surface-lg ring-1 ring-black/[0.06] backdrop-blur-md"
           role="status"
         >
           {toast}
@@ -396,6 +403,20 @@ export function SettingsPage() {
               </label>
               <textarea id="set-footer" value={receiptFooter} onChange={(e) => setReceiptFooter(e.target.value)} className={cn(fieldClass, "min-h-[5rem] py-3")} placeholder="Merci de votre visite !" />
             </div>
+            <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-white/[0.06] bg-[#0c0c10]/40 px-4 py-3.5">
+              <input
+                type="checkbox"
+                checked={openCashDrawerAfterPayment}
+                onChange={(e) => setOpenCashDrawerAfterPayment(e.target.checked)}
+                className="mt-0.5 size-4 rounded border-pos-border-subtle"
+              />
+              <span className="min-w-0">
+                <span className="block text-sm font-semibold text-white">{fr.settingsPage.openCashDrawerAfterPayment}</span>
+                <span className="mt-0.5 block text-xs font-medium text-slate-400">
+                  {fr.settingsPage.openCashDrawerAfterPaymentHint}
+                </span>
+              </span>
+            </label>
           </div>
         </section>
 
@@ -620,15 +641,13 @@ export function SettingsPage() {
             </Button>
           </div>
         </section>
-      </div>
 
-      <div className="sticky bottom-0 z-20 mt-10 border-t border-white/[0.08] bg-gradient-to-t from-[#09090b] via-[#09090b]/98 to-[#09090b]/85 px-0 py-4 pb-[max(1rem,env(safe-area-inset-bottom))] backdrop-blur-md md:mt-12">
-        <div className="mx-auto max-w-3xl">
+        <div className="flex justify-center pt-2 md:pt-4">
           <Button
             type="button"
             onClick={() => void handleSaveAll()}
             disabled={patchSystemSettings.isPending}
-            className="h-12 w-full rounded-[16px] border-0 bg-gradient-to-r from-[#7c3aed] to-[#db2777] text-sm font-bold text-white shadow-[0_12px_40px_-12px_rgba(124,58,237,0.45)] transition hover:from-[#8b5cf6] hover:to-[#ec4899] hover:shadow-[0_16px_48px_-14px_rgba(219,39,119,0.35)] active:scale-[0.99] disabled:opacity-60"
+            className="h-12 rounded-[16px] border-0 bg-gradient-to-r from-[#7c3aed] to-[#db2777] px-8 text-sm font-bold text-white shadow-[0_12px_40px_-12px_rgba(124,58,237,0.45)] transition hover:from-[#8b5cf6] hover:to-[#ec4899] hover:shadow-[0_16px_48px_-14px_rgba(219,39,119,0.35)] active:scale-[0.99] disabled:opacity-60"
           >
             {patchSystemSettings.isPending ? "Enregistrement…" : fr.settingsPage.saveChanges}
           </Button>

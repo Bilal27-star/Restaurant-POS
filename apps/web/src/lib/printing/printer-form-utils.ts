@@ -1,5 +1,6 @@
 export type KitchenStation = "PIZZA" | "PLATS" | "SNACK" | "CAFETERIA";
 export type PrinterRole = "KITCHEN" | "CASHIER" | "RECEIPT";
+export type PrinterTransport = "tcp" | "usb" | "winspool";
 
 export type ApiPrinter = {
   id: string;
@@ -24,8 +25,11 @@ export type PrinterFormState = {
   name: string;
   role: PrinterRole;
   kitchenStation: KitchenStation | "";
+  transport: PrinterTransport;
   host: string;
   port: string;
+  devicePath: string;
+  printerName: string;
   driver: string;
   paperWidthChars: string;
   isDefault: boolean;
@@ -44,8 +48,11 @@ export function emptyPrinterForm(): PrinterFormState {
     name: "",
     role: "KITCHEN",
     kitchenStation: "",
+    transport: "tcp",
     host: "",
     port: "9100",
+    devicePath: "",
+    printerName: "",
     driver: "NETWORK_TCP",
     paperWidthChars: "32",
     isDefault: false,
@@ -53,14 +60,27 @@ export function emptyPrinterForm(): PrinterFormState {
   };
 }
 
+export function parsePrinterTransport(cj: unknown): PrinterTransport {
+  if (!cj || typeof cj !== "object") return "tcp";
+  const t = String((cj as Record<string, unknown>).transport ?? "tcp").toLowerCase();
+  if (t === "usb") return "usb";
+  if (t === "winspool") return "winspool";
+  return "tcp";
+}
+
 export function printerToForm(p: ApiPrinter): PrinterFormState {
+  const transport = parsePrinterTransport(p.connectionJson);
+  const cj = p.connectionJson as Record<string, unknown>;
   const { host, port } = parseConnectionHostPort(p.connectionJson);
   return {
     name: p.name,
     role: p.role,
     kitchenStation: p.kitchenStation ?? "",
+    transport,
     host,
     port: String(port),
+    devicePath: transport === "usb" ? String(cj.devicePath ?? "") : "",
+    printerName: transport === "winspool" ? String(cj.printerName ?? "") : "",
     driver: p.driver,
     paperWidthChars: String(p.paperWidthChars),
     isDefault: p.isDefault,
@@ -76,6 +96,7 @@ export function formFromDiscovered(host: string, port: number, station?: Kitchen
     port: String(port),
     kitchenStation: station ?? "",
     driver: "NETWORK_TCP",
+    transport: "tcp",
   };
 }
 
@@ -91,15 +112,28 @@ export function buildTcpConnectionJson(host: string, port: number): Record<strin
   return { transport: "tcp", host: host.trim(), port };
 }
 
+export function buildConnectionJson(form: PrinterFormState): Record<string, unknown> {
+  const port = parseInt(form.port, 10) || 9100;
+  switch (form.transport) {
+    case "usb":
+      return { transport: "usb", devicePath: form.devicePath.trim() };
+    case "winspool":
+      return { transport: "winspool", printerName: form.printerName.trim() };
+    default:
+      return buildTcpConnectionJson(form.host, port);
+  }
+}
+
 export function formatPrinterConnection(cj: unknown): string {
   if (!cj || typeof cj !== "object") return "—";
   const o = cj as Record<string, unknown>;
-  const t = o.transport;
+  const t = String(o.transport ?? "").toLowerCase();
   if (t === "tcp" || o.host || o.ip) {
     const { host, port } = parseConnectionHostPort(cj);
     return host ? `${host}:${port}` : "—";
   }
-  if (t === "usb") return String(o.devicePath ?? "USB");
+  if (t === "usb") return `USB: ${String(o.devicePath ?? "—")}`;
+  if (t === "winspool") return `Windows: ${String(o.printerName ?? "—")}`;
   if (t === "file") return String(o.path ?? "fichier");
   return "JSON";
 }
@@ -128,14 +162,17 @@ function parsePaperWidth(raw: string): number {
   return Math.min(64, Math.max(24, n));
 }
 
+function driverForTransport(transport: PrinterTransport): string {
+  return transport === "tcp" ? "NETWORK_TCP" : "RAW_ESCPOS";
+}
+
 export function buildCreatePrinterBody(form: PrinterFormState): Record<string, unknown> {
-  const port = parseInt(form.port, 10) || 9100;
   return {
     name: form.name.trim(),
     role: form.role,
     kitchenStation: form.role === "KITCHEN" && form.kitchenStation ? form.kitchenStation : null,
-    driver: form.driver.trim() || "NETWORK_TCP",
-    connectionJson: buildTcpConnectionJson(form.host, port),
+    driver: form.driver.trim() || driverForTransport(form.transport),
+    connectionJson: buildConnectionJson(form),
     paperWidthChars: parsePaperWidth(form.paperWidthChars),
     isDefault: form.isDefault,
     isActive: form.isActive,
@@ -144,4 +181,8 @@ export function buildCreatePrinterBody(form: PrinterFormState): Record<string, u
 
 export function buildUpdatePrinterBody(form: PrinterFormState): Record<string, unknown> {
   return buildCreatePrinterBody(form);
+}
+
+export function isTcpPrinter(cj: unknown): boolean {
+  return parsePrinterTransport(cj) === "tcp";
 }

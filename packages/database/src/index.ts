@@ -2,6 +2,8 @@ export { getPrisma, prisma, resetPrismaClient } from "./client.js";
 export { defaultSystemSettingsJson, type DefaultSystemSettings } from "./default-settings.js";
 export {
   isLegacyKitchenPrinter,
+  isLegacyLinuxUsbCashierPrinter,
+  repairLegacyCashierUsbPrinters,
   repairLegacyKitchenPrinters,
   type PrinterRepairRow,
 } from "./printer-repair.js";

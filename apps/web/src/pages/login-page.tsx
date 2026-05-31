@@ -33,7 +33,12 @@ export function LoginPage() {
       await login({ restaurantSlug: restaurantSlug.trim(), username: username.trim(), password });
       navigate(from, { replace: true });
     } catch (err) {
-      const msg = err instanceof ApiClientError ? err.message : "Connexion impossible";
+      const msg =
+        err instanceof ApiClientError
+          ? err.message
+          : err instanceof Error && err.message
+            ? err.message
+            : "Connexion impossible";
       setError(msg);
     } finally {
       setBusy(false);

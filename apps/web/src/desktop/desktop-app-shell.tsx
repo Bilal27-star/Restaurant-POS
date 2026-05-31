@@ -2,6 +2,7 @@ import * as React from "react";
 
 import { ensureDesktopBackendReady } from "@/lib/app-api";
 import { isTauriDesktop } from "@/lib/desktop/tauri-host";
+import { getLanApiConfig } from "@/lib/lan-api-config";
 
 type ExitPayload = {
   stderrTail?: string;
@@ -16,14 +17,20 @@ type ExitPayload = {
  * then keeps a listener for unexpected backend exit so the UI does not fail silently.
  */
 export function DesktopAppShell({ children }: { children: React.ReactNode }) {
-  const [phase, setPhase] = React.useState<"native" | "boot" | "ready" | "error">(() =>
-    isTauriDesktop() ? "boot" : "native",
-  );
+  const [phase, setPhase] = React.useState<"native" | "boot" | "ready" | "error">(() => {
+    if (!isTauriDesktop()) return "native";
+    if (getLanApiConfig().mode === "remote") return "ready";
+    return "boot";
+  });
   const [errorText, setErrorText] = React.useState<string | null>(null);
 
   React.useEffect(() => {
     if (!isTauriDesktop()) {
       setPhase("native");
+      return;
+    }
+    if (getLanApiConfig().mode === "remote") {
+      setPhase("ready");
       return;
     }
 

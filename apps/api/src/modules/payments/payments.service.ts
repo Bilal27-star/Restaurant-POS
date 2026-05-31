@@ -171,7 +171,6 @@ export class PaymentsService {
         actorUserId: input.actorUserId,
         order: result.order,
         payment: result.payment,
-        openCashDrawer: method === "CASH",
       });
     }
 

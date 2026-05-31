@@ -2,6 +2,7 @@ import type { PaymentMethod, KitchenStation, Prisma } from "@pos/database";
 
 type RestaurantPrinter = Prisma.RestaurantPrinterGetPayload<Record<string, never>>;
 
+import { isOpenCashDrawerAfterPaymentEnabled } from "../../core/printing/cashier-receipt-settings.js";
 import type { CustomerReceiptDocument, KitchenTicketDocument, TableTicketDocument } from "../../core/printing/documents/types.js";
 import { prisma } from "../../prisma/index.js";
 import { resolveKitchenStation } from "../menu/kitchen-station.js";
@@ -188,13 +189,12 @@ export class HardwarePrintOrchestrator {
     });
   }
 
-  /** After a successful payment capture (non-idempotent replay), queue customer receipt; cash opens drawer. */
+  /** After a successful payment capture (non-idempotent replay), queue customer receipt. */
   scheduleReceiptAfterCapture(input: {
     restaurantId: string;
     actorUserId: string;
     order: OrderWithRelations;
     payment: { id: string; method: PaymentMethod | string; amount: string; changeGiven: string | null };
-    openCashDrawer: boolean;
   }): void {
     void this.enqueueReceiptAsync(input).catch((err) => {
       console.error("[hardware-print] receipt enqueue failed", { restaurantId: input.restaurantId, err });
@@ -280,14 +280,13 @@ export class HardwarePrintOrchestrator {
     actorUserId: string;
     order: OrderWithRelations;
     payment: { id: string; method: PaymentMethod | string; amount: string; changeGiven: string | null };
-    openCashDrawer: boolean;
   }): Promise<void> {
     const selectedPrinter = await this.printerRepo.findDefaultActivePrinterForReceipt(input.restaurantId);
     if (!selectedPrinter) return;
 
     const settings = await prisma.systemSettings.findUnique({
       where: { restaurantId: input.restaurantId },
-      select: { restaurantName: true, address: true, phone: true },
+      select: { restaurantName: true, address: true, phone: true, settingsJson: true },
     });
     const fallbackName = await this.printerRepo.findRestaurantDisplayName(input.restaurantId);
     const restaurantName = settings?.restaurantName?.trim() || fallbackName;
@@ -329,7 +328,8 @@ export class HardwarePrintOrchestrator {
       cashTendered,
       qrPayload: `pos:payment:${input.payment.id}`,
       cashierName: cashier?.fullName ?? null,
-      openCashDrawerBeforeCut: input.openCashDrawer,
+      openCashDrawerBeforeCut:
+        isOpenCashDrawerAfterPaymentEnabled(settings?.settingsJson) && payRow?.method === "CASH",
     };
 
     await this.printing.enqueueJob({

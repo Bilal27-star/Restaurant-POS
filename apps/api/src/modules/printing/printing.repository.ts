@@ -1,4 +1,5 @@
 import {
+  repairLegacyCashierUsbPrinters,
   repairLegacyKitchenPrinters,
   type KitchenStation,
   type PrintJobKind,
@@ -57,6 +58,7 @@ export class PrintingRepository {
 
   private async ensureDefaultPrinters(restaurantId: string): Promise<void> {
     await repairLegacyKitchenPrinters(prisma, restaurantId);
+    await repairLegacyCashierUsbPrinters(prisma, restaurantId);
 
     const count = await prisma.restaurantPrinter.count({
       where: { restaurantId },
@@ -69,9 +71,9 @@ export class PrintingRepository {
             name: "Cashier Printer",
             role: "CASHIER",
             driver: "RAW_ESCPOS",
-            connectionJson: { transport: "usb", devicePath: "/dev/usb/lp0" },
+            connectionJson: { transport: "winspool", printerName: "" },
             isDefault: true,
-            isActive: true,
+            isActive: false,
           },
         })
         .catch(() => undefined);

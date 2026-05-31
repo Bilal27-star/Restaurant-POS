@@ -10,10 +10,13 @@ import {
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { fr } from "@/lib/locale/fr";
+import { discoverLocalPrinters } from "@/lib/desktop/tauri-printer-discovery";
+import { isTauriDesktop } from "@/lib/desktop/tauri-host";
 import {
   KITCHEN_STATIONS,
   type ApiPrinter,
   type PrinterFormState,
+  type PrinterTransport,
   buildCreatePrinterBody,
   buildUpdatePrinterBody,
   emptyPrinterForm,
@@ -34,6 +37,7 @@ type Props = {
   mode: "add" | "edit";
   printer: ApiPrinter | null;
   discovered?: { host: string; port: number; station?: KitchenStation } | null;
+  preset?: Partial<PrinterFormState> | null;
   onSave: (body: Record<string, unknown>) => Promise<void>;
   onTestConnection?: (host: string, port: number) => Promise<{ ok: boolean; message: string }>;
 };
@@ -44,6 +48,7 @@ export function PrinterFormModal({
   mode,
   printer,
   discovered,
+  preset,
   onSave,
   onTestConnection,
 }: Props) {
@@ -52,25 +57,61 @@ export function PrinterFormModal({
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
   const [testMessage, setTestMessage] = useState<string | null>(null);
+  const [localComPorts, setLocalComPorts] = useState<string[]>([]);
+  const [localSpooler, setLocalSpooler] = useState<string[]>([]);
+  const [loadingLocal, setLoadingLocal] = useState(false);
 
   const hydrate = useCallback(() => {
     if (mode === "edit" && printer) {
       setForm(printerToForm(printer));
+    } else if (preset) {
+      setForm({ ...emptyPrinterForm(), ...preset });
     } else if (discovered) {
       setForm(formFromDiscovered(discovered.host, discovered.port, discovered.station));
     } else {
       setForm(emptyPrinterForm());
     }
     setTestMessage(null);
-  }, [mode, printer, discovered]);
+  }, [mode, printer, discovered, preset]);
 
   useEffect(() => {
     if (open) hydrate();
   }, [open, hydrate]);
 
+  const loadLocalDevices = async () => {
+    if (!isTauriDesktop()) return;
+    setLoadingLocal(true);
+    try {
+      const found = await discoverLocalPrinters();
+      setLocalComPorts(found.comPorts);
+      setLocalSpooler(found.spoolerPrinters);
+    } finally {
+      setLoadingLocal(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!open || !isTauriDesktop()) return;
+    if (form.transport === "usb" || form.transport === "winspool") {
+      void loadLocalDevices();
+    }
+  }, [open, form.transport]);
+
+  const validateForm = (): string | null => {
+    if (!form.name.trim()) return "Nom requis";
+    if (form.transport === "tcp" && !form.host.trim()) return "Adresse IP requise";
+    if (form.transport === "usb" && !form.devicePath.trim()) return "Port COM / chemin requis";
+    if (form.transport === "winspool" && !form.printerName.trim()) return "Nom de file d'impression Windows requis";
+    return null;
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!form.name.trim() || !form.host.trim()) return;
+    const err = validateForm();
+    if (err) {
+      setTestMessage(err);
+      return;
+    }
     setSaving(true);
     try {
       const body = mode === "edit" ? buildUpdatePrinterBody(form) : buildCreatePrinterBody(form);
@@ -92,6 +133,14 @@ export function PrinterFormModal({
     } finally {
       setTesting(false);
     }
+  };
+
+  const onTransportChange = (transport: PrinterTransport) => {
+    setForm((p) => ({
+      ...p,
+      transport,
+      driver: transport === "tcp" ? "NETWORK_TCP" : "RAW_ESCPOS",
+    }));
   };
 
   return (
@@ -148,16 +197,93 @@ export function PrinterFormModal({
               </select>
             </label>
           ) : null}
-          <div className="grid grid-cols-2 gap-3">
+
+          <label className="block space-y-1.5">
+            <span className="text-xs font-bold uppercase tracking-wide text-slate-400">
+              {fr.settingsPage.printerTransport}
+            </span>
+            <select
+              className={field}
+              value={form.transport}
+              onChange={(e) => onTransportChange(e.target.value as PrinterTransport)}
+            >
+              <option value="tcp">{fr.settingsPage.printerTransportTcp}</option>
+              <option value="usb">{fr.settingsPage.printerTransportUsb}</option>
+              <option value="winspool">{fr.settingsPage.printerTransportWinspool}</option>
+            </select>
+          </label>
+
+          {form.transport === "tcp" ? (
+            <div className="grid grid-cols-2 gap-3">
+              <label className="block space-y-1.5">
+                <span className="text-xs font-bold uppercase tracking-wide text-slate-400">{fr.settingsPage.printerHost}</span>
+                <Input className={field} value={form.host} onChange={(e) => setForm((p) => ({ ...p, host: e.target.value }))} />
+              </label>
+              <label className="block space-y-1.5">
+                <span className="text-xs font-bold uppercase tracking-wide text-slate-400">{fr.settingsPage.printerPort}</span>
+                <Input className={field} value={form.port} onChange={(e) => setForm((p) => ({ ...p, port: e.target.value }))} inputMode="numeric" />
+              </label>
+            </div>
+          ) : null}
+
+          {form.transport === "usb" ? (
             <label className="block space-y-1.5">
-              <span className="text-xs font-bold uppercase tracking-wide text-slate-400">{fr.settingsPage.printerHost}</span>
-              <Input className={field} value={form.host} onChange={(e) => setForm((p) => ({ ...p, host: e.target.value }))} required />
+              <span className="text-xs font-bold uppercase tracking-wide text-slate-400">
+                {fr.settingsPage.printerComPort}
+              </span>
+              <select
+                className={field}
+                value={form.devicePath}
+                onChange={(e) => setForm((p) => ({ ...p, devicePath: e.target.value }))}
+              >
+                <option value="">{loadingLocal ? "…" : "— Choisir —"}</option>
+                {form.devicePath && !localComPorts.includes(form.devicePath) ? (
+                  <option value={form.devicePath}>{form.devicePath}</option>
+                ) : null}
+                {localComPorts.map((c) => (
+                  <option key={c} value={c}>
+                    {c}
+                  </option>
+                ))}
+              </select>
+              <Input
+                className={cn(field, "mt-2")}
+                value={form.devicePath}
+                onChange={(e) => setForm((p) => ({ ...p, devicePath: e.target.value }))}
+                placeholder="\\\\.\\COM3"
+              />
             </label>
+          ) : null}
+
+          {form.transport === "winspool" ? (
             <label className="block space-y-1.5">
-              <span className="text-xs font-bold uppercase tracking-wide text-slate-400">{fr.settingsPage.printerPort}</span>
-              <Input className={field} value={form.port} onChange={(e) => setForm((p) => ({ ...p, port: e.target.value }))} inputMode="numeric" />
+              <span className="text-xs font-bold uppercase tracking-wide text-slate-400">
+                {fr.settingsPage.printerWindowsQueue}
+              </span>
+              <select
+                className={field}
+                value={form.printerName}
+                onChange={(e) => setForm((p) => ({ ...p, printerName: e.target.value }))}
+              >
+                <option value="">{loadingLocal ? "…" : "— Choisir —"}</option>
+                {form.printerName && !localSpooler.includes(form.printerName) ? (
+                  <option value={form.printerName}>{form.printerName}</option>
+                ) : null}
+                {localSpooler.map((n) => (
+                  <option key={n} value={n}>
+                    {n}
+                  </option>
+                ))}
+              </select>
+              <Input
+                className={cn(field, "mt-2")}
+                value={form.printerName}
+                onChange={(e) => setForm((p) => ({ ...p, printerName: e.target.value }))}
+                placeholder="XPrinter XP-80"
+              />
             </label>
-          </div>
+          ) : null}
+
           <label className="block space-y-1.5">
             <span className="text-xs font-bold uppercase tracking-wide text-slate-400">{fr.settingsPage.printerPaperWidth}</span>
             <Input
@@ -188,12 +314,12 @@ export function PrinterFormModal({
             </label>
           </div>
           {testMessage ? (
-            <p className={cn("text-sm font-medium", testMessage.includes("✓") ? "text-emerald-300" : "text-rose-300")}>
+            <p className={cn("text-sm font-medium", testMessage.includes("✓") || testMessage.includes("ms") ? "text-emerald-300" : "text-rose-300")}>
               {testMessage}
             </p>
           ) : null}
           <div className="flex flex-wrap gap-2 border-t border-white/[0.08] pt-4">
-            {onTestConnection ? (
+            {form.transport === "tcp" && onTestConnection ? (
               <Button type="button" variant="outline" disabled={testing || !form.host.trim()} onClick={() => void handleTest()}>
                 {testing ? <Loader2 className="mr-2 size-4 animate-spin" /> : null}
                 {fr.settingsPage.printerTestConnection}

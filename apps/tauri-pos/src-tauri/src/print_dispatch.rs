@@ -1,4 +1,7 @@
-//! Local ESC/POS dispatch: TCP (port 9100), spool file under app data, or raw device path (COM/USB).
+//! Local ESC/POS dispatch: TCP (port 9100), Windows spooler RAW, spool file, or device path (COM/USB).
+#[cfg(windows)]
+use crate::win_spool;
+
 use std::fs::OpenOptions;
 use std::io::Write;
 use std::net::TcpStream;
@@ -36,6 +39,10 @@ fn file_relative_path(conn: &Value) -> Option<String> {
 
 fn device_path(conn: &Value) -> Option<String> {
     conn.get("devicePath").and_then(|v| v.as_str()).map(str::to_string)
+}
+
+fn winspool_printer_name(conn: &Value) -> Option<String> {
+    conn.get("printerName").and_then(|v| v.as_str()).map(str::to_string)
 }
 
 fn spool_dir(app: &AppHandle) -> Result<PathBuf, String> {
@@ -139,14 +146,41 @@ pub fn dispatch_escpos(app: &AppHandle, escpos_base64: &str, meta_json: Option<&
             let dev = device_path(conn).ok_or_else(|| "usb: need devicePath".to_string())?;
             print_device(&dev, &bytes)
         }
+        "winspool" => {
+            let name = winspool_printer_name(conn).ok_or_else(|| "winspool: need printerName".to_string())?;
+            #[cfg(windows)]
+            {
+                win_spool::print_raw_winspool(&name, &bytes)
+            }
+            #[cfg(not(windows))]
+            {
+                let _ = name;
+                Err("winspool transport requires Windows".into())
+            }
+        }
         "" => {
             // Try implicit tcp if host+port at top level
             if let Some((host, port)) = tcp_target(conn) {
                 return print_tcp(&host, port, &bytes);
             }
-            Err("unknown or missing transport in connection (use tcp, file, or usb)".into())
+            Err("unknown or missing transport in connection (use tcp, usb, winspool, or file)".into())
         }
         other => Err(format!("unsupported transport: {other}")),
+    }
+}
+
+/// Installed Windows printer queue names; empty on non-Windows targets.
+pub fn list_spooler_printers() -> Vec<String> {
+    #[cfg(windows)]
+    {
+        win_spool::list_installed_printers().unwrap_or_else(|e| {
+            log::warn!("list_spooler_printers: {e}");
+            vec![]
+        })
+    }
+    #[cfg(not(windows))]
+    {
+        vec![]
     }
 }
 

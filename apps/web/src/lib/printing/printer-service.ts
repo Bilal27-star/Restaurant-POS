@@ -1,4 +1,5 @@
 import { getAppApi } from "@/lib/app-api";
+import { isTauriDesktop } from "@/lib/desktop/tauri-host";
 import {
   type PaymentReceiptPrintDocument,
   openPaymentReceiptPrintWindow,
@@ -11,6 +12,10 @@ import {
 export class PrinterService {
   /** Loads the canonical payment receipt document from the API and opens a print-friendly window. */
   static async printCashierReceiptFromPaymentId(paymentId: string): Promise<boolean> {
+    if (isTauriDesktop()) {
+      // Checkout already enqueued CUSTOMER_RECEIPT; ThermalPrintWorker dispatches to local printer.
+      return true;
+    }
     try {
       const raw = await getAppApi().payments.receipt(paymentId);
       if (!raw || typeof raw !== "object") return false;

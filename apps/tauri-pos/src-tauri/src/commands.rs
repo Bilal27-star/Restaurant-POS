@@ -26,6 +26,12 @@ pub fn list_usb_printer_paths() -> Result<Vec<String>, String> {
     Ok(print_dispatch::list_serial_candidates())
 }
 
+/// Installed Windows printer queue names (empty on macOS/Linux).
+#[tauri::command]
+pub fn list_windows_spooler_printers() -> Result<Vec<String>, String> {
+    Ok(print_dispatch::list_spooler_printers())
+}
+
 /// Stable on-disk layout for offline POS data (see `desktop_paths` module docs in Rust).
 #[tauri::command]
 pub fn pos_desktop_paths(app: AppHandle) -> Result<serde_json::Value, String> {

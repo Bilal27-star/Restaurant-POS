@@ -10,11 +10,15 @@ import {
   type ApiPrinter,
   type DiscoveredPrinter,
   type KitchenStation,
+  type PrinterFormState,
+  emptyPrinterForm,
   formatPrinterConnection,
+  isTcpPrinter,
   kitchenStationLabel,
   parseConnectionHostPort,
   printerRoleLabelFr,
 } from "@/lib/printing/printer-form-utils";
+import { discoverLocalPrinters } from "@/lib/desktop/tauri-printer-discovery";
 import { cn } from "@/lib/utils";
 import { PrinterManager } from "@/services/printing";
 
@@ -35,15 +39,20 @@ export function PrinterSettingsPanel({ canThermalPrint, thermalWorkerRunning, on
   const [discoveredSeed, setDiscoveredSeed] = useState<{ host: string; port: number; station?: KitchenStation } | null>(
     null,
   );
+  const [formPreset, setFormPreset] = useState<Partial<PrinterFormState> | null>(null);
   const [discoveredList, setDiscoveredList] = useState<DiscoveredPrinter[]>([]);
   const [deleteTarget, setDeleteTarget] = useState<ApiPrinter | null>(null);
   const [testBusyPrinterId, setTestBusyPrinterId] = useState<string | null>(null);
   const [networkTestBusyId, setNetworkTestBusyId] = useState<string | null>(null);
+  const [localComPorts, setLocalComPorts] = useState<string[]>([]);
+  const [localSpooler, setLocalSpooler] = useState<string[]>([]);
+  const [loadingLocal, setLoadingLocal] = useState(false);
 
   const openAdd = () => {
     setFormMode("add");
     setEditingPrinter(null);
     setDiscoveredSeed(null);
+    setFormPreset(null);
     setFormOpen(true);
   };
 
@@ -51,6 +60,7 @@ export function PrinterSettingsPanel({ canThermalPrint, thermalWorkerRunning, on
     setFormMode("edit");
     setEditingPrinter(p);
     setDiscoveredSeed(null);
+    setFormPreset(null);
     setFormOpen(true);
   };
 
@@ -59,6 +69,43 @@ export function PrinterSettingsPanel({ canThermalPrint, thermalWorkerRunning, on
     setEditingPrinter(null);
     setDiscoveredSeed({ host: d.host, port: d.port, station });
     setFormOpen(true);
+  };
+
+  const openAddWinspoolPrinter = (queueName: string) => {
+    setFormMode("add");
+    setEditingPrinter(null);
+    setDiscoveredSeed(null);
+    setFormPreset({
+      ...emptyPrinterForm(),
+      name: queueName,
+      role: "CASHIER",
+      transport: "winspool",
+      printerName: queueName,
+      driver: "RAW_ESCPOS",
+      isActive: true,
+      isDefault: true,
+    });
+    setFormOpen(true);
+  };
+
+  const runDiscoverLocal = async () => {
+    if (!isTauriDesktop()) return;
+    setLoadingLocal(true);
+    try {
+      const found = await discoverLocalPrinters();
+      setLocalComPorts(found.comPorts);
+      setLocalSpooler(found.spoolerPrinters);
+      const total = found.comPorts.length + found.spoolerPrinters.length;
+      onToast(
+        total > 0
+          ? `${total} périphérique(s) local(aux) détecté(s).`
+          : fr.settingsPage.printerDiscoverLocalEmpty,
+      );
+    } catch (e: unknown) {
+      onToast(e instanceof Error ? e.message : fr.settingsPage.printerDiscoverErr);
+    } finally {
+      setLoadingLocal(false);
+    }
   };
 
   const runDiscover = async () => {
@@ -175,6 +222,19 @@ export function PrinterSettingsPanel({ canThermalPrint, thermalWorkerRunning, on
       </div>
 
       <div className="mb-4 flex flex-wrap gap-2">
+        {isTauriDesktop() ? (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={loadingLocal}
+            className="h-9 gap-1.5 rounded-lg border-pos-border-subtle bg-pos-glass/80 text-xs font-semibold"
+            onClick={() => void runDiscoverLocal()}
+          >
+            <HardDrive className="size-3.5" aria-hidden />
+            {loadingLocal ? fr.settingsPage.printerSearching : fr.settingsPage.printerDiscoverLocal}
+          </Button>
+        ) : null}
         <Button
           type="button"
           variant="outline"
@@ -196,6 +256,32 @@ export function PrinterSettingsPanel({ canThermalPrint, thermalWorkerRunning, on
           {fr.settingsPage.printerAdd}
         </Button>
       </div>
+
+      {isTauriDesktop() && (localComPorts.length > 0 || localSpooler.length > 0) ? (
+        <div className="mb-4 rounded-xl border border-violet-500/20 bg-violet-500/[0.06] p-4">
+          <p className="mb-3 text-xs font-bold uppercase tracking-wide text-violet-200/90">
+            {fr.settingsPage.printerDiscoverLocalHint}
+          </p>
+          {localSpooler.length > 0 ? (
+            <ul className="mb-3 space-y-1">
+              {localSpooler.map((name) => (
+                <li key={name}>
+                  <button
+                    type="button"
+                    className="w-full rounded-lg border border-white/[0.06] bg-pos-depth/40 px-3 py-2 text-left text-sm text-slate-200 hover:bg-white/[0.06]"
+                    onClick={() => openAddWinspoolPrinter(name)}
+                  >
+                    {name}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          ) : null}
+          {localComPorts.length > 0 ? (
+            <p className="font-mono text-xs text-slate-400">{localComPorts.join(", ")}</p>
+          ) : null}
+        </div>
+      ) : null}
 
       {discoveredList.length > 0 ? (
         <div className="mb-4 rounded-xl border border-sky-500/20 bg-sky-500/[0.06] p-4">
@@ -274,16 +360,18 @@ export function PrinterSettingsPanel({ canThermalPrint, thermalWorkerRunning, on
                     </div>
                   </div>
                   <div className="flex flex-wrap gap-2 sm:justify-end">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      disabled={netBusy}
-                      className="h-9 rounded-lg border-pos-border-subtle bg-pos-glass/80 text-xs font-semibold"
-                      onClick={() => void runNetworkTest(p)}
-                    >
-                      {netBusy ? fr.settingsPage.printerTesting : fr.settingsPage.printerTestConnection}
-                    </Button>
+                    {isTcpPrinter(p.connectionJson) ? (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        disabled={netBusy}
+                        className="h-9 rounded-lg border-pos-border-subtle bg-pos-glass/80 text-xs font-semibold"
+                        onClick={() => void runNetworkTest(p)}
+                      >
+                        {netBusy ? fr.settingsPage.printerTesting : fr.settingsPage.printerTestConnection}
+                      </Button>
+                    ) : null}
                     {isTauriDesktop() && (isKitchen || isReceiptStation) ? (
                       <Button
                         type="button"
@@ -350,6 +438,7 @@ export function PrinterSettingsPanel({ canThermalPrint, thermalWorkerRunning, on
         mode={formMode}
         printer={editingPrinter}
         discovered={discoveredSeed}
+        preset={formPreset}
         onSave={handleSave}
         onTestConnection={handleFormTest}
       />

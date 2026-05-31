@@ -285,6 +285,7 @@ export function TablesPage() {
         </div>
       ) : null}
 
+      <div className="shrink-0 space-y-6">
       {/* Toolbar — Figma: floors + search + filters + add */}
       <div className="flex flex-col gap-4 lg:flex-row lg:flex-wrap lg:items-center lg:justify-between">
         <div className="flex min-w-0 flex-wrap gap-2">
@@ -406,7 +407,7 @@ export function TablesPage() {
       </div>
 
       {/* Legend — Figma summary row */}
-      <div className="mt-6 flex flex-wrap items-center gap-x-8 gap-y-2 text-sm">
+      <div className="flex flex-wrap items-center gap-x-8 gap-y-2 text-sm">
         <span className="inline-flex items-center gap-2 text-muted-foreground">
           <span className="size-3 rounded-full bg-emerald-400 shadow-[0_0_10px_rgba(52,211,153,0.45)]" aria-hidden />
           <span>
@@ -435,7 +436,9 @@ export function TablesPage() {
           {fr.tables.dragHint}
         </span>
       </div>
+      </div>
 
+      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
       {/* Grid — fluid columns ~ Figma card width */}
       {activeFloor.tables.length > 0 ? (
         <div className="mt-8 grid grid-cols-[repeat(auto-fill,minmax(14rem,1fr))] gap-4 md:gap-5">
@@ -533,6 +536,7 @@ export function TablesPage() {
           {fr.tables.noMatchFilters}
         </p>
       ) : null}
+      </div>
 
       <AddFloorModal
         open={addFloorOpen}

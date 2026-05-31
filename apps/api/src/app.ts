@@ -7,7 +7,7 @@ import { isAuthThrottleDisabled } from "./config/desktop-runtime.js";
 import type { Env } from "./config/env.js";
 import { createRootLogger, createDomainLogger } from "./config/logger.js";
 import { createErrorHandler } from "./core/errors/errorHandler.js";
-import { createCorsMiddleware } from "./middleware/cors.js";
+import { createCorsMiddleware, privateNetworkAccessMiddleware } from "./middleware/cors.js";
 import { createHttpLogger } from "./middleware/httpLogger.js";
 import { notFoundHandler } from "./middleware/notFound.js";
 import { createAuthRateLimiter, createDefaultRateLimiter } from "./middleware/rateLimit.js";
@@ -33,6 +33,7 @@ export function createHttpApplication(env: Env): AppInstance {
 
   app.use(requestIdMiddleware);
   app.use(helmet());
+  app.use(privateNetworkAccessMiddleware);
   app.use(createCorsMiddleware(env));
   app.use(hpp());
   app.use(express.json({ limit: "1mb" }));

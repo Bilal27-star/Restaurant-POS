@@ -4,6 +4,7 @@ description = "POS desktop shell: ESC/POS dispatch, stable data dirs, autostart 
 commands.allow = [
   "print_escpos_base64",
   "list_usb_printer_paths",
+  "list_windows_spooler_printers",
   "pos_desktop_paths",
   "pos_backend_status",
   "pos_set_launch_on_login",

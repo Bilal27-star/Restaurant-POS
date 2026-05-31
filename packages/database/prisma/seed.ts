@@ -9,7 +9,7 @@ import {
 import bcrypt from "bcrypt";
 
 import { defaultSystemSettingsJson } from "../src/default-settings.js";
-import { repairLegacyKitchenPrinters } from "../src/printer-repair.js";
+import { repairLegacyCashierUsbPrinters, repairLegacyKitchenPrinters } from "../src/printer-repair.js";
 
 const prisma = new PrismaClient();
 
@@ -370,8 +370,8 @@ async function main() {
       kitchenStation: null as KitchenStation | null,
       driver: "RAW_ESCPOS",
       connectionJson: {
-        transport: "usb",
-        devicePath: "/dev/usb/lp0",
+        transport: "winspool",
+        printerName: "",
       },
       isDefault: true,
     },
@@ -403,6 +403,7 @@ async function main() {
   }
 
   await repairLegacyKitchenPrinters(prisma, restaurant.id);
+  await repairLegacyCashierUsbPrinters(prisma, restaurant.id);
 
   // eslint-disable-next-line no-console -- seed script
   console.log(

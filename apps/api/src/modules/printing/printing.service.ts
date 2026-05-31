@@ -3,6 +3,7 @@ import fs from "node:fs";
 
 import type { KitchenStation, PrintJobKind, PrintJobStatus, PrinterRole, Prisma } from "@pos/database";
 
+import { isDesktopRuntimeEnv } from "../../config/desktop-runtime.js";
 import { ApiError } from "../../core/http/ApiError.js";
 import { prisma } from "../../prisma/index.js";
 import { renderThermalEscPos } from "../../core/printing/renderer.js";
@@ -224,18 +225,17 @@ export class PrintingService {
       }
     }
 
-    // Skip actual USB device execution if device does not exist
-    if (transport === "usb") {
+    // Embedded desktop API only: optional direct USB write on the same machine as the device.
+    // LAN servers and remote clients use the Tauri print worker instead.
+    if (transport === "usb" && isDesktopRuntimeEnv()) {
       const devicePath =
-        (typeof connectionJson.devicePath === "string" ? connectionJson.devicePath : null) || "/dev/usb/lp0";
-      if (fs.existsSync(devicePath)) {
+        (typeof connectionJson.devicePath === "string" ? connectionJson.devicePath : null) || "";
+      if (devicePath && fs.existsSync(devicePath)) {
         try {
           fs.writeFileSync(devicePath, Buffer.from(base64, "base64"));
         } catch (err) {
           console.error("USB printer write error:", err);
         }
-      } else {
-        console.log(`USB device ${devicePath} does not exist. Skipping physical device execution.`);
       }
     }
 
@@ -392,10 +392,16 @@ export class PrintingService {
           connectionJson: { transport: "tcp", host: "192.168.1.50", port: 9100 },
         },
         {
-          id: "raw_escpos_usb_path",
-          label: "USB thermal (path / spool — filled by desktop agent)",
+          id: "raw_escpos_usb_com",
+          label: "USB thermal (COM / device path — desktop agent)",
           driver: "RAW_ESCPOS",
-          connectionJson: { transport: "usb", devicePath: "/dev/usb/lp0" },
+          connectionJson: { transport: "usb", devicePath: "\\\\.\\COM3" },
+        },
+        {
+          id: "raw_escpos_winspool",
+          label: "Windows spooler (RAW ESC/POS queue name)",
+          driver: "RAW_ESCPOS",
+          connectionJson: { transport: "winspool", printerName: "" },
         },
         {
           id: "spool_file",

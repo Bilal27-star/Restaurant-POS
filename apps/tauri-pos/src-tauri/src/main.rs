@@ -6,6 +6,8 @@ mod desktop_log;
 mod desktop_paths;
 mod embedded_node;
 mod print_dispatch;
+#[cfg(windows)]
+mod win_spool;
 
 use embedded_node::EmbeddedBackend;
 use tauri::Manager;
@@ -51,6 +53,7 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             commands::print_escpos_base64,
             commands::list_usb_printer_paths,
+            commands::list_windows_spooler_printers,
             commands::pos_desktop_paths,
             commands::pos_backend_status,
             commands::pos_set_launch_on_login,
