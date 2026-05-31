@@ -22,7 +22,7 @@ export async function startPosHttpServer(env: Env): Promise<{
   const { adminStatus } = await ensureInitialTenantIfEmpty(env, rootLogger);
   console.log(adminStatus === "created" ? "[BOOT] admin created" : "[BOOT] admin exists");
 
-  const listenHost = env.LISTEN_HOST?.trim() || process.env.LISTEN_HOST?.trim() || "127.0.0.1";
+  const listenHost = env.LISTEN_HOST?.trim() || process.env.LISTEN_HOST?.trim() || "0.0.0.0";
 
   await new Promise<void>((resolve, reject) => {
     const onError = (err: NodeJS.ErrnoException) => {

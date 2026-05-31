@@ -206,6 +206,7 @@ fn spawn_once(
         .env("POS_DESKTOP_LOG_STDERR", "1")
         .env("NODE_ENV", "production")
         .env("PORT", format!("{}", desktop_paths::LOCAL_API_PORT))
+        .env("LISTEN_HOST", "0.0.0.0")
         .env("PATH", path_val)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())

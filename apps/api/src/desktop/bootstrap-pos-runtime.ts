@@ -95,6 +95,8 @@ async function main() {
   loadRuntimeEnvFiles();
   process.env.NODE_ENV = "production";
   process.env.POS_DESKTOP_RUNTIME = "1";
+  /** Desktop LAN server: bind all interfaces (ignore stale packaged `.env` / old bundled dist defaults). */
+  process.env.LISTEN_HOST = "0.0.0.0";
   /** Ignore any packaged `.env` pointing at Docker — desktop uses embedded PG only. */
   delete process.env.DATABASE_URL;
   configureDesktopApiProcessEnv(process.env);
@@ -151,7 +153,7 @@ async function main() {
 
   const env = loadEnv();
 
-  log(`boot: starting HTTP on 127.0.0.1:${env.PORT}`);
+  log(`boot: starting HTTP on ${env.LISTEN_HOST}:${env.PORT}`);
   const { startPosHttpServer } = await import("../http-server.js");
   const { gracefulShutdown } = await startPosHttpServer(env);
   await waitForLocalHttpHealth(env.PORT, 60_000);
