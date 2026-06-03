@@ -11,6 +11,7 @@ import type { ThermalDocument } from "../../core/printing/documents/types.js";
 import { serializePrinter } from "./printer.dto.js";
 import { printPayload } from "./printing.validation.js";
 import { PrintingRepository } from "./printing.repository.js";
+import { KitchenPrintFailureService } from "../kitchen-delta/kitchen-print-failure.service.js";
 
 type RestaurantPrinter = Prisma.RestaurantPrinterGetPayload<Record<string, never>>;
 
@@ -47,6 +48,7 @@ export class PrinterManager {
 
 export class PrintingService {
   private readonly manager: PrinterManager;
+  private readonly kitchenFailures = new KitchenPrintFailureService();
 
   constructor(private readonly repo: PrintingRepository) {
     this.manager = new PrinterManager(repo);
@@ -284,7 +286,21 @@ export class PrintingService {
     if (!res.ok) {
       throw ApiError.notFound("Print job not found");
     }
-    return { job: await this.getJob(restaurantId, jobId), terminal: res.terminal };
+
+    const job = await this.getJob(restaurantId, jobId);
+
+    if (res.terminal) {
+      await this.kitchenFailures.handleTerminalPrintJobFailure(restaurantId, jobId, error);
+    } else {
+      this.kitchenFailures.logPrintJobRetry(
+        restaurantId,
+        jobId,
+        error,
+        (job as { attempts?: number }).attempts ?? 0,
+      );
+    }
+
+    return { job, terminal: res.terminal };
   }
 
   async cancelJob(restaurantId: string, jobId: string) {

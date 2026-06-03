@@ -37,6 +37,24 @@ export interface AddCaisseEmployeeInput {
   password?: string;
 }
 
+function ledgerKindFromCashTx(t: {
+  type: string;
+  orderType?: string | null;
+  paymentMethod?: string | null;
+}): FinancialTransactionKind {
+  if (t.type === "EXPENSE_OUT") return "expense";
+  if (t.type === "REFUND_OUT") return "refund";
+  if (t.type === "SALE_CASH") return "sale_cash";
+  if (t.type === "SALE_CARD") return "sale_card";
+  if (t.type === "TAKEAWAY_CASH") return "takeaway";
+  if (t.type === "SALE_IN") {
+    if (t.orderType === "TAKEAWAY") return "takeaway";
+    if (t.paymentMethod === "CARD") return "sale_card";
+    return "sale_cash";
+  }
+  return "sale_cash";
+}
+
 function paymentMethodSnippet(method?: ExpensePaymentMethod): string {
   if (!method) return "";
   if (method === "cash") return "Cash";
@@ -367,12 +385,11 @@ export const useCaisseStore = create<CaisseState>((set) => ({
       cashierName: shift.openedBy?.fullName || "Staff",
     };
     const transactions: FinancialTransaction[] = (cashTransactions || []).map((t: any) => {
-      let kind: FinancialTransactionKind = "sale_cash";
-      if (t.type === "SALE_CASH") kind = "sale_cash";
-      else if (t.type === "SALE_CARD") kind = "sale_card";
-      else if (t.type === "TAKEAWAY_CASH") kind = "takeaway";
-      else if (t.type === "EXPENSE_OUT") kind = "expense";
-      else if (t.type === "REFUND_OUT") kind = "refund";
+      const kind = ledgerKindFromCashTx({
+        type: t.type,
+        orderType: t.orderType,
+        paymentMethod: t.paymentMethod,
+      });
 
       return {
         id: t.id,
@@ -381,7 +398,7 @@ export const useCaisseStore = create<CaisseState>((set) => ({
         amountDa: Number.parseFloat(t.amount),
         label: t.label || (t.type === "EXPENSE_OUT" ? "Dépense" : "Vente"),
         createdAtMs: new Date(t.createdAt).getTime(),
-        relatedOrderId: t.orderId,
+        relatedOrderId: t.orderId ?? undefined,
         relatedExpenseId: t.expenseId,
       };
     });

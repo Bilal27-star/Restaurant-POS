@@ -1,4 +1,5 @@
-import type { KitchenStation, OrderStatus, OrderType, Prisma } from "@pos/database";
+import type { KitchenPrintIntentStatus, KitchenStation, OrderStatus, OrderType, Prisma } from "@pos/database";
+import { randomUUID } from "node:crypto";
 
 import { ApiError } from "../../core/http/ApiError.js";
 import { money } from "../../core/orders/money.js";
@@ -9,9 +10,37 @@ import type { OrderLifecycleEventV1 } from "./orders.events.js";
 import type { OrderWithRelations } from "./orders.repository.js";
 import { OrdersRepository } from "./orders.repository.js";
 import { buildCustomerReceiptDto, buildKitchenTicketDto, buildTableTicketDto } from "./printing/order-print-dtos.js";
+import { resolveOrderWaiterName } from "./order-waiter-name.js";
 import { serializeOrderEntity } from "./serialize-order.js";
 import type { HardwarePrintOrchestrator } from "../printing/hardware-print-orchestrator.js";
 import type { PaymentsService } from "../payments/payments.service.js";
+import {
+  KitchenDeltaDispatchService,
+  type KitchenDispatchResult,
+} from "../kitchen-delta/kitchen-delta-dispatch.service.js";
+import { KitchenDeltaRepository } from "../kitchen-delta/kitchen-delta.repository.js";
+import { isKitchenDeltaPrintingEnabled } from "../kitchen-delta/kitchen-delta-settings.js";
+import { buildKitchenRecoveryInfo } from "../kitchen-delta/kitchen-delta-diagnostics.js";
+import { listKitchenDispatchAuditLogs } from "../kitchen-delta/kitchen-dispatch-audit.js";
+import type { KitchenDetectLine } from "../kitchen-delta/kitchen-delta.types.js";
+
+function isKitchenLineFieldPatch(patch: {
+  quantity?: number;
+  modifierIds?: string[];
+  removedIngredientIds?: string[];
+  kitchenNotes?: string | null;
+}): boolean {
+  return (
+    patch.quantity !== undefined ||
+    patch.kitchenNotes !== undefined ||
+    patch.modifierIds !== undefined ||
+    patch.removedIngredientIds !== undefined
+  );
+}
+
+function lineEligibleForKitchenDelta(line: KitchenDetectLine | null): line is KitchenDetectLine {
+  return line != null && line.kitchenStatus !== "PENDING";
+}
 
 const repoErrors: Record<string, { status: number; message: string }> = {
   ORDER_NOT_FOUND: { status: 404, message: "Order not found" },
@@ -34,6 +63,10 @@ const repoErrors: Record<string, { status: number; message: string }> = {
   NOT_PAID: { status: 400, message: "Order must be fully paid before completion" },
   ORDER_NOT_CANCELLABLE: { status: 409, message: "Order cannot be cancelled" },
   HAS_PAYMENTS: { status: 409, message: "Cancel is blocked while payments exist; refund or void payments first" },
+  MUTATION_ID_CONFLICT: {
+    status: 409,
+    message: "clientMutationId was already used for a different order mutation",
+  },
 };
 
 function mapRepoError(err: unknown): never {
@@ -52,17 +85,85 @@ function mapRepoError(err: unknown): never {
   throw err;
 }
 
+export type KitchenResponseMeta = {
+  mutationApplied: boolean;
+  kitchenDispatched: boolean;
+  intentId: string | null;
+  intentStatus: KitchenPrintIntentStatus | null;
+  failedStations: KitchenStation[];
+  enqueuedStations?: KitchenDispatchResult["enqueuedStations"];
+  recovery?: import("../kitchen-delta/kitchen-delta-diagnostics.js").KitchenRecoveryInfo;
+};
+
 export class OrdersService {
   private readonly db = prisma;
+  private readonly kitchenRepo = new KitchenDeltaRepository();
+  private readonly kitchenDelta: KitchenDeltaDispatchService;
 
   constructor(
     private readonly repo: OrdersRepository,
     private readonly payments: PaymentsService,
     private readonly printing?: HardwarePrintOrchestrator | null,
-  ) {}
+  ) {
+    this.kitchenDelta = new KitchenDeltaDispatchService(this.printing?.printing ?? null);
+  }
 
   private wrap<T>(p: Promise<T>): Promise<T> {
     return p.catch((e) => mapRepoError(e));
+  }
+
+  /** Kitchen delta pipeline — real dispatch when flag on, shadow when flag off. */
+  private async runKitchenDelta(
+    input: Parameters<KitchenDeltaDispatchService["runPipeline"]>[0],
+  ): Promise<KitchenDispatchResult> {
+    try {
+      const enabled = await isKitchenDeltaPrintingEnabled(input.restaurantId);
+      if (enabled) {
+        return await this.kitchenDelta.runPipeline(input);
+      }
+      const shadow = await this.kitchenDelta.runShadowPipeline(input);
+      return {
+        ...shadow,
+        enqueuedStations: [],
+        failedStations: [],
+      };
+    } catch (err) {
+      console.error("[KITCHEN_DELTA] pipeline failed", {
+        orderId: input.order.id,
+        kind: input.kind,
+        err,
+      });
+      return {
+        intentId: null,
+        intentStatus: null,
+        kitchenDispatched: false,
+        shadowLogged: false,
+        enqueuedStations: [],
+        failedStations: [],
+      };
+    }
+  }
+
+  private async kitchenMeta(
+    restaurantId: string,
+    orderId: string,
+    mutationApplied: boolean,
+    result: KitchenDispatchResult | null,
+  ): Promise<KitchenResponseMeta> {
+    const base: KitchenResponseMeta = {
+      mutationApplied,
+      kitchenDispatched: result?.kitchenDispatched ?? false,
+      intentId: result?.intentId ?? null,
+      intentStatus: result?.intentStatus ?? null,
+      failedStations: result?.failedStations ?? [],
+      enqueuedStations: result?.enqueuedStations,
+    };
+
+    if (await isKitchenDeltaPrintingEnabled(restaurantId)) {
+      base.recovery = await buildKitchenRecoveryInfo(restaurantId, orderId);
+    }
+
+    return base;
   }
 
   private async scheduleKitchenJobsForOrder(orderId: string): Promise<void> {
@@ -117,7 +218,7 @@ export class OrdersService {
       const actorUserId = order.createdByUserId ?? order.waiterId ?? null;
       const tableNumber = order.table?.number ?? null;
       const restaurantName = await this.repo.findRestaurantName(restaurantId);
-      const waiterName = order.waiter?.fullName?.trim() || "—";
+      const waiterName = resolveOrderWaiterName(order);
 
       for (const [station, lines] of Object.entries(grouped) as [KitchenStation, (typeof order.items)[number][]][]) {
         const mappedItems = lines.map((it) => ({
@@ -147,7 +248,7 @@ export class OrdersService {
           printedAtIso: new Date().toISOString(),
           orderKitchenNotes: dto.kitchenNotes ?? null,
           station,
-          waiterName,
+          ...(waiterName ? { waiterName } : {}),
           lines: dto.lines,
         };
 
@@ -172,6 +273,7 @@ export class OrdersService {
     tableId: string | null;
     customerId: string | null;
     waiterId: string | null;
+    waiterName?: string | null;
     partySize: number | null;
     kitchenNotes: string | null;
     customerNotes: string | null;
@@ -217,6 +319,7 @@ export class OrdersService {
         tableId: input.tableId,
         customerId: input.customerId,
         waiterId,
+        waiterName: input.waiterName?.trim() || null,
         createdByUserId: input.actorUserId,
         partySize: input.partySize,
         kitchenNotes: input.kitchenNotes,
@@ -227,20 +330,163 @@ export class OrdersService {
         lines: input.lines,
       }),
     ).then(async ({ order: o, inserted }) => {
-      void this.scheduleKitchenJobsForOrder(o.id);
+      const mutationKey = input.clientMutationId?.trim();
+      const deltaEnabled = await isKitchenDeltaPrintingEnabled(input.restaurantId);
+      const deltaResult = mutationKey
+        ? await this.runKitchenDelta({
+            kind: "CREATE",
+            restaurantId: input.restaurantId,
+            order: o,
+            clientMutationId: mutationKey,
+            mutationApplied: inserted,
+          })
+        : null;
+
+      if (inserted && !deltaEnabled) {
+        void this.scheduleKitchenJobsForOrder(o.id);
+      }
 
       if (inserted) {
         getRealtimeHub()?.publishOrderCreated(o);
       } else {
         getRealtimeHub()?.publishOrderUpdated(o, { op: "patch" });
       }
-      return this.serializeOrder(o);
+      return this.serializeOrder(o, await this.kitchenMeta(input.restaurantId, o.id, inserted, deltaResult));
     });
   }
 
   getById(restaurantId: string, orderId: string): Promise<unknown> {
-    return this.wrap(this.repo.getOrderByIdOrThrow(prisma, restaurantId, orderId)).then((o) =>
-      this.serializeOrder(o),
+    return this.wrap(this.repo.getOrderByIdOrThrow(prisma, restaurantId, orderId)).then(async (o) => {
+      const base = this.serializeOrder(o);
+      if (await isKitchenDeltaPrintingEnabled(restaurantId)) {
+        return {
+          ...(base as Record<string, unknown>),
+          kitchen: {
+            recovery: await buildKitchenRecoveryInfo(restaurantId, orderId),
+          },
+        };
+      }
+      return base;
+    });
+  }
+
+  async getKitchenRecovery(restaurantId: string, orderId: string): Promise<unknown> {
+    await this.wrap(this.repo.getOrderByIdOrThrow(prisma, restaurantId, orderId));
+    const enabled = await isKitchenDeltaPrintingEnabled(restaurantId);
+    if (!enabled) {
+      return { enabled: false, recovery: null };
+    }
+    return {
+      enabled: true,
+      recovery: await buildKitchenRecoveryInfo(restaurantId, orderId),
+    };
+  }
+
+  async getKitchenDispatchAudit(restaurantId: string, orderId: string): Promise<unknown> {
+    await this.wrap(this.repo.getOrderByIdOrThrow(prisma, restaurantId, orderId));
+    const rows = await listKitchenDispatchAuditLogs(restaurantId, orderId);
+    return rows.map((r) => ({
+      id: r.id,
+      orderId: r.orderId,
+      lineId: r.orderItemId,
+      mutationType: r.mutationKind,
+      dispatchStatus: r.status,
+      dispatchTimestamp: r.dispatchedAt.toISOString(),
+      intentId: r.intentId,
+      printJobId: r.printJobId,
+    }));
+  }
+
+  async dispatchPendingKitchen(input: {
+    restaurantId: string;
+    orderId: string;
+    actorUserId: string;
+    clientMutationId: string;
+    version?: number;
+  }): Promise<unknown> {
+    if (!(await isKitchenDeltaPrintingEnabled(input.restaurantId))) {
+      throw ApiError.badRequest("Kitchen delta printing is not enabled for this restaurant");
+    }
+
+    const o = await this.wrap(this.repo.getOrderByIdOrThrow(prisma, input.restaurantId, input.orderId));
+    if (input.version !== undefined && o.version !== input.version) {
+      throw ApiError.conflict("Order was modified by another session (version mismatch)");
+    }
+    if (o.closedAt || o.status === "CANCELLED" || o.status === "COMPLETED") {
+      throw ApiError.conflict("Order is not open for kitchen dispatch");
+    }
+
+    const removedLines = await this.kitchenRepo.loadPendingRemovedDetectLines(
+      prisma,
+      input.restaurantId,
+      input.orderId,
+    );
+    const hasModified = o.items.some(
+      (it) => (it as { kitchenStatus?: string }).kitchenStatus === "MODIFIED",
+    );
+    if (!hasModified && removedLines.length === 0) {
+      throw ApiError.badRequest("No pending kitchen changes to dispatch");
+    }
+
+    const deltaResult = await this.runKitchenDelta({
+      kind: "DISPATCH_PENDING",
+      restaurantId: input.restaurantId,
+      order: o,
+      clientMutationId: input.clientMutationId.trim(),
+      mutationApplied: true,
+      removedLines,
+    });
+
+    if (deltaResult.intentId && removedLines.length > 0) {
+      await prisma.$transaction(async (tx) => {
+        await this.kitchenRepo.linkRemovedAuditsToIntent(
+          tx,
+          input.restaurantId,
+          input.orderId,
+          removedLines.map((line) => line.id),
+          deltaResult.intentId!,
+        );
+      });
+    }
+
+    const fresh = await this.wrap(
+      this.repo.getOrderByIdOrThrow(prisma, input.restaurantId, input.orderId),
+    );
+    getRealtimeHub()?.publishOrderUpdated(fresh, { op: "patch" });
+    return this.serializeOrder(
+      fresh,
+      await this.kitchenMeta(input.restaurantId, fresh.id, true, deltaResult),
+    );
+  }
+
+  async fullKitchenReprint(input: {
+    restaurantId: string;
+    orderId: string;
+    actorUserId: string;
+    clientMutationId: string;
+    lineIds?: string[];
+  }): Promise<unknown> {
+    if (!(await isKitchenDeltaPrintingEnabled(input.restaurantId))) {
+      throw ApiError.badRequest("Kitchen delta printing is not enabled for this restaurant");
+    }
+
+    const order = await this.wrap(
+      this.repo.getOrderByIdOrThrow(prisma, input.restaurantId, input.orderId),
+    );
+    if (order.status === "COMPLETED" || order.status === "CANCELLED") {
+      throw ApiError.conflict("Cannot full-reprint kitchen tickets for a closed order");
+    }
+
+    const deltaResult = await this.kitchenDelta.runFullReprintPipeline({
+      restaurantId: input.restaurantId,
+      order,
+      clientMutationId: input.clientMutationId.trim(),
+      lineIds: input.lineIds,
+    });
+
+    return this.serializeOrder(
+      order,
+      await this.kitchenMeta(input.restaurantId, order.id, true, deltaResult),
     );
   }
 
@@ -283,6 +529,7 @@ export class OrdersService {
       status?: OrderStatus;
       customerId?: string | null;
       waiterId?: string | null;
+      waiterName?: string | null;
       partySize?: number | null;
       taxTotal?: string | null;
       discountTotal?: string | null;
@@ -295,6 +542,7 @@ export class OrdersService {
       status?: OrderStatus;
       customerId?: string | null;
       waiterId?: string | null;
+      waiterName?: string | null;
       partySize?: number | null;
       taxTotal?: Prisma.Decimal | null;
       discountTotal?: Prisma.Decimal | null;
@@ -323,7 +571,6 @@ export class OrdersService {
         patch,
       }),
     ).then(async (o) => {
-      void this.scheduleKitchenJobsForOrder(o.id);
       getRealtimeHub()?.publishOrderUpdated(o, { op: "patch" });
       return this.serializeOrder(o);
     });
@@ -334,6 +581,7 @@ export class OrdersService {
     orderId: string;
     actorUserId: string;
     version?: number;
+    clientMutationId?: string | null;
     lines: {
       menuItemId: string;
       quantity: number;
@@ -347,21 +595,38 @@ export class OrdersService {
         restaurantId: input.restaurantId,
         orderId: input.orderId,
         expectedVersion: input.version,
+        clientMutationId: input.clientMutationId ?? null,
         lines: input.lines,
       }),
-    ).then(async (o) => {
-      void this.scheduleKitchenJobsForOrder(o.id);
+    ).then(async ({ order: o, applied, addedLineIds }) => {
+      const mutationKey = input.clientMutationId?.trim();
+      const deltaEnabled = await isKitchenDeltaPrintingEnabled(input.restaurantId);
+      const deltaResult = mutationKey
+        ? await this.runKitchenDelta({
+            kind: "LINE_ADD",
+            restaurantId: input.restaurantId,
+            order: o,
+            clientMutationId: mutationKey,
+            mutationApplied: applied,
+            addedLineIds: addedLineIds ?? [],
+          })
+        : null;
+
+      if (applied && !deltaEnabled) {
+        void this.scheduleKitchenJobsForOrder(o.id);
+      }
       getRealtimeHub()?.publishOrderUpdated(o, { op: "add_lines" });
-      return this.serializeOrder(o);
+      return this.serializeOrder(o, await this.kitchenMeta(input.restaurantId, o.id, applied, deltaResult));
     });
   }
 
-  updateLine(input: {
+  async updateLine(input: {
     restaurantId: string;
     orderId: string;
     lineId: string;
     actorUserId: string;
     version?: number;
+    clientMutationId?: string | null;
     patch: {
       quantity?: number;
       modifierIds?: string[];
@@ -369,39 +634,102 @@ export class OrdersService {
       kitchenNotes?: string | null;
     };
   }): Promise<unknown> {
+    const deltaEnabled = await isKitchenDeltaPrintingEnabled(input.restaurantId);
+    const kitchenPatch = isKitchenLineFieldPatch(input.patch);
+    const clientKey = input.clientMutationId?.trim() || null;
+    let beforeLine: KitchenDetectLine | null = null;
+    if (kitchenPatch && deltaEnabled) {
+      beforeLine = await this.kitchenRepo.loadKitchenDetectLine(
+        prisma,
+        input.restaurantId,
+        input.orderId,
+        input.lineId,
+      );
+    }
+    const mutationKey =
+      clientKey ??
+      (kitchenPatch && deltaEnabled && lineEligibleForKitchenDelta(beforeLine) ? randomUUID() : null);
+
     return this.wrap(
       this.repo.updateLine({
         restaurantId: input.restaurantId,
         orderId: input.orderId,
         lineId: input.lineId,
         expectedVersion: input.version,
+        clientMutationId: clientKey,
         patch: input.patch,
       }),
-    ).then(async (o) => {
-      void this.scheduleKitchenJobsForOrder(o.id);
+    ).then(async ({ order: o, applied }) => {
+      const deltaResult =
+        mutationKey && beforeLine && lineEligibleForKitchenDelta(beforeLine)
+          ? await this.runKitchenDelta({
+              kind: "LINE_UPDATE",
+              restaurantId: input.restaurantId,
+              order: o,
+              clientMutationId: mutationKey,
+              mutationApplied: applied,
+              lineId: input.lineId,
+              beforeLine,
+            })
+          : null;
+
+      if (applied && !deltaEnabled) {
+        void this.scheduleKitchenJobsForOrder(o.id);
+      }
       getRealtimeHub()?.publishOrderUpdated(o, { op: "update_line" });
-      return this.serializeOrder(o);
+      return this.serializeOrder(o, await this.kitchenMeta(input.restaurantId, o.id, applied, deltaResult));
     });
   }
 
-  deleteLine(input: {
+  async deleteLine(input: {
     restaurantId: string;
     orderId: string;
     lineId: string;
     actorUserId: string;
     version?: number;
+    clientMutationId?: string | null;
   }): Promise<unknown> {
+    const deltaEnabled = await isKitchenDeltaPrintingEnabled(input.restaurantId);
+    const clientKey = input.clientMutationId?.trim() || null;
+    let deletedLine: KitchenDetectLine | null = null;
+    if (deltaEnabled) {
+      deletedLine = await this.kitchenRepo.loadKitchenDetectLine(
+        prisma,
+        input.restaurantId,
+        input.orderId,
+        input.lineId,
+      );
+    }
+    const mutationKey =
+      clientKey ??
+      (deltaEnabled && lineEligibleForKitchenDelta(deletedLine) ? randomUUID() : null);
+
     return this.wrap(
       this.repo.deleteLine({
         restaurantId: input.restaurantId,
         orderId: input.orderId,
         lineId: input.lineId,
         expectedVersion: input.version,
+        clientMutationId: clientKey,
       }),
-    ).then(async (o) => {
-      void this.scheduleKitchenJobsForOrder(o.id);
+    ).then(async ({ order: o, applied }) => {
+      const deltaResult =
+        mutationKey && deletedLine && lineEligibleForKitchenDelta(deletedLine)
+          ? await this.runKitchenDelta({
+              kind: "LINE_DELETE",
+              restaurantId: input.restaurantId,
+              order: o,
+              clientMutationId: mutationKey,
+              mutationApplied: applied,
+              deletedLine,
+            })
+          : null;
+
+      if (applied && !deltaEnabled) {
+        void this.scheduleKitchenJobsForOrder(o.id);
+      }
       getRealtimeHub()?.publishOrderUpdated(o, { op: "delete_line" });
-      return this.serializeOrder(o);
+      return this.serializeOrder(o, await this.kitchenMeta(input.restaurantId, o.id, applied, deltaResult));
     });
   }
 
@@ -533,7 +861,11 @@ export class OrdersService {
     };
   }
 
-  serializeOrder(o: OrderWithRelations): unknown {
-    return serializeOrderEntity(o);
+  serializeOrder(o: OrderWithRelations, kitchen?: KitchenResponseMeta): unknown {
+    const base = serializeOrderEntity(o);
+    if (!kitchen) {
+      return base;
+    }
+    return { ...(base as Record<string, unknown>), kitchen };
   }
 }

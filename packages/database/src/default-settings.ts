@@ -4,6 +4,8 @@
  */
 export const defaultSystemSettingsJson = {
   v: 1 as const,
+  /** Kitchen Delta Printing Phase 2+ — on by default for new tenants. */
+  kitchenDeltaPrintingEnabled: true,
   receipt: {
     headerLines: ["Merci de votre visite"],
     footerLines: [] as string[],

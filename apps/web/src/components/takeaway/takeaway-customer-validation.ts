@@ -9,6 +9,7 @@ export type TakeawayCustomerDraft = {
 
 export type TakeawayCustomerFieldErrorKey = "name" | "phone" | "address";
 
+/** Strict validation for future delivery-required flows (not used for POS kitchen send). */
 export function validateTakeawayCustomerDraft(d: TakeawayCustomerDraft): Partial<Record<TakeawayCustomerFieldErrorKey, string>> {
   const errors: Partial<Record<TakeawayCustomerFieldErrorKey, string>> = {};
   const name = d.name.trim();

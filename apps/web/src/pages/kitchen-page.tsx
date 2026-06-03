@@ -133,6 +133,11 @@ function KitchenOrderCard({
             {order.type === "DINE_IN" ? `${fr.kitchen.table} ${order.table?.number ?? "—"}` : fr.kitchen.takeaway}
           </span>
           <span className="text-lg font-bold text-foreground">#{order.orderNumber}</span>
+          {(order as { waiterName?: string | null }).waiterName?.trim() ? (
+            <span className="text-xs font-medium text-muted-foreground">
+              Serveur : {(order as { waiterName?: string | null }).waiterName?.trim()}
+            </span>
+          ) : null}
         </div>
         <div className={cn("flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-bold", isUrgent ? "bg-red-500/20 text-red-400" : "bg-white/5 text-muted-foreground")}>
           <Clock className="h-3 w-3" />

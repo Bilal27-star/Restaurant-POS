@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <title>Kitchen ticket preview</title>
+  <style>
+    body { background: #444; font-family: "Courier New", monospace; display: flex; justify-content: center; padding: 24px; }
+    .ticket { background: #fff; width: 320px; padding: 16px 14px; box-shadow: 0 8px 32px rgba(0,0,0,.35); font-size: 13px; line-height: 1.45; }
+    .center { text-align: center; }
+    .bold { font-weight: 700; }
+    .double { font-size: 18px; }
+    .rule { border-top: 1px dashed #000; margin: 8px 0; }
+    .note-head { font-weight: 700; margin-top: 4px; }
+    .indent { padding-left: 12px; }
+    .section { font-weight: 700; margin-top: 8px; }
+  </style>
+</head>
+<body>
+  <div class="ticket">
+    <div class="center bold double">NOUVEAU</div>
+    <div class="rule"></div>
+    <div class="bold">Table: 5</div>
+    <div class="bold">Order: #2026-000018</div>
+    <div class="bold">Station: PIZZA</div>
+    <div class="bold">Serveur: Administrator</div>
+    <div>Heure: 2026-06-03T01:15:46Z</div>
+    <div class="rule"></div>
+    <div class="section">--- NOUVEAU ---</div>
+    <div class="bold">1x Pizza Poulet</div>
+    <div class="note-head">*** NOTE CUISINE ***</div>
+    <div class="indent">Sans fromage</div>
+    <div class="rule"></div>
+    <div class="center">Default</div>
+  </div>
+</body>
+</html>

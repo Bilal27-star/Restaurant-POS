@@ -261,13 +261,13 @@ export function TablesPage() {
       error={layoutQuery.error}
       isEmpty={false}
       onRetry={() => void layoutQuery.refetch()}
-      className="relative isolate min-h-0 flex-1"
+      className="relative isolate flex min-h-0 flex-1 flex-col overflow-hidden"
       showLoadingOverlay={layoutQuery.isFetching && floors.length > 0}
     >
-    <div className="relative isolate flex min-h-0 flex-1 flex-col">
+    <div className="relative isolate flex min-h-0 flex-1 flex-col overflow-hidden">
       {showDegradedBanner ? (
         <div
-          className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-500/35 bg-amber-950/25 px-4 py-3 text-sm text-amber-100"
+          className="mb-4 flex shrink-0 flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-500/35 bg-amber-950/25 px-4 py-3 text-sm text-amber-100"
           role="status"
         >
           <span>Impossible de rafraîchir le plan de salle. Les données affichées peuvent être obsolètes.</span>
@@ -286,9 +286,8 @@ export function TablesPage() {
       ) : null}
 
       <div className="shrink-0 space-y-6">
-      {/* Toolbar — Figma: floors + search + filters + add */}
-      <div className="flex flex-col gap-4 lg:flex-row lg:flex-wrap lg:items-center lg:justify-between">
-        <div className="flex min-w-0 flex-wrap gap-2">
+      {/* Room tabs — full-width horizontal scroll; never wrap vertically */}
+      <div className="flex-scroll-x scrollbar-pos-modal flex min-w-0 gap-2 pb-0.5">
           {floors.map((floor) => {
             const active = floor.id === floorId;
             const isDropFloor = dragOverFloorId === floor.id;
@@ -296,7 +295,7 @@ export function TablesPage() {
               <div
                 key={floor.id}
                 className={cn(
-                  "rounded-xl transition-[box-shadow,transform] duration-200 ease-out",
+                  "shrink-0 rounded-xl transition-[box-shadow,transform] duration-200 ease-out",
                   isDropFloor && "ring-2 ring-violet-400/70 ring-offset-2 ring-offset-[#0b0616] scale-[1.02]",
                 )}
                 onDragOver={(e) => {
@@ -339,10 +338,11 @@ export function TablesPage() {
               </div>
             );
           })}
-        </div>
+      </div>
 
-        <div className="flex w-full min-w-0 flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center lg:w-auto lg:max-w-none">
-          <div className="relative min-w-[12rem] flex-1 sm:max-w-xs lg:w-64 lg:flex-none">
+      {/* Search + filters + actions */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
+        <div className="relative min-w-[12rem] flex-1 sm:max-w-xs lg:w-64 lg:flex-none">
             <Search
               className="pointer-events-none absolute left-3 top-1/2 size-[18px] -translate-y-1/2 text-on-dark-label"
               aria-hidden
@@ -404,7 +404,6 @@ export function TablesPage() {
             {fr.tables.addTable}
           </Button>
         </div>
-      </div>
 
       {/* Legend — Figma summary row */}
       <div className="flex flex-wrap items-center gap-x-8 gap-y-2 text-sm">
@@ -438,7 +437,7 @@ export function TablesPage() {
       </div>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+      <div className="tables-page-scroll scrollbar-pos-modal">
       {/* Grid — fluid columns ~ Figma card width */}
       {activeFloor.tables.length > 0 ? (
         <div className="mt-8 grid grid-cols-[repeat(auto-fill,minmax(14rem,1fr))] gap-4 md:gap-5">
@@ -668,6 +667,8 @@ export function TablesPage() {
           const order = target?.table.order;
           if (!target || !order) return;
           try {
+            const clientMutationId =
+              typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `m-${Date.now()}`;
             await getAppApi().orders.addLines(
               order.id,
               buildAddOrderLinesBody({
@@ -678,6 +679,7 @@ export function TablesPage() {
                   removedIngredientIds: [] as string[],
                   kitchenNotes: null,
                 })),
+                clientMutationId,
                 ...(order.version != null ? { version: order.version } : {}),
               }),
             );

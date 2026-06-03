@@ -216,6 +216,11 @@ export function createPosApiClient(opts: PosApiClientOptions) {
         const q = query ? `?${new URLSearchParams(query).toString()}` : "";
         return request<unknown>(`/orders/${orderId}/lines/${lineId}${q}`, { method: "DELETE" });
       },
+      dispatchPendingKitchen: (orderId: string, body: unknown) =>
+        request<unknown>(`/orders/${orderId}/kitchen/dispatch-pending`, {
+          method: "POST",
+          body: JSON.stringify(body),
+        }),
       pay: (orderId: string, body: unknown) =>
         request<unknown>(`/orders/${orderId}/payments`, { method: "POST", body: JSON.stringify(body) }),
       complete: (orderId: string, body: unknown) =>

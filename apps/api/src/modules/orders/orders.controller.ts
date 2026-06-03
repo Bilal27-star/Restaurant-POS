@@ -16,6 +16,7 @@ export class OrdersController {
       tableId?: string | null;
       customerId?: string | null;
       waiterId?: string | null;
+      waiterName?: string | null;
       partySize?: number | null;
       kitchenNotes?: string | null;
       customerNotes?: string | null;
@@ -37,6 +38,7 @@ export class OrdersController {
       tableId: body.tableId ?? null,
       customerId: body.customerId ?? null,
       waiterId: body.waiterId ?? null,
+      waiterName: body.waiterName ?? null,
       partySize: body.partySize ?? null,
       kitchenNotes: body.kitchenNotes ?? null,
       customerNotes: body.customerNotes ?? null,
@@ -105,6 +107,7 @@ export class OrdersController {
       status?: "PENDING" | "PREPARING" | "READY" | "COMPLETED" | "CANCELLED";
       customerId?: string | null;
       waiterId?: string | null;
+      waiterName?: string | null;
       partySize?: number | null;
       taxTotal?: string | null;
       discountTotal?: string | null;
@@ -125,6 +128,7 @@ export class OrdersController {
     const { orderId } = req.params as { orderId: string };
     const body = req.body as {
       version?: number;
+      clientMutationId?: string | null;
       lines: {
         menuItemId: string;
         quantity: number;
@@ -138,6 +142,7 @@ export class OrdersController {
       orderId,
       actorUserId: auth.userId,
       version: body.version,
+      clientMutationId: body.clientMutationId ?? null,
       lines: body.lines.map((l) => ({
         menuItemId: l.menuItemId,
         quantity: l.quantity,
@@ -154,6 +159,7 @@ export class OrdersController {
     const { orderId, lineId } = req.params as { orderId: string; lineId: string };
     const body = req.body as {
       version?: number;
+      clientMutationId?: string | null;
       quantity?: number;
       modifierIds?: string[];
       removedIngredientIds?: string[];
@@ -166,6 +172,7 @@ export class OrdersController {
       lineId,
       actorUserId: auth.userId,
       version,
+      clientMutationId: body.clientMutationId ?? null,
       patch,
     });
     sendSuccess(res, data, { message: "Line updated" });
@@ -174,13 +181,14 @@ export class OrdersController {
   deleteLine = asyncHandler(async (req: Request, res: Response) => {
     const auth = req.auth!;
     const { orderId, lineId } = req.params as { orderId: string; lineId: string };
-    const q = req.query as unknown as { version?: number };
+    const q = req.query as unknown as { version?: number; clientMutationId?: string | null };
     const data = await this.service.deleteLine({
       restaurantId: auth.restaurantId,
       orderId,
       lineId,
       actorUserId: auth.userId,
       version: q.version,
+      clientMutationId: q.clientMutationId ?? null,
     });
     sendSuccess(res, data, { message: "Line removed" });
   });
@@ -256,5 +264,47 @@ export class OrdersController {
     const { orderId } = req.params as { orderId: string };
     const data = await this.service.printReceipt(auth.restaurantId, orderId);
     sendSuccess(res, data, { message: "Receipt document" });
+  });
+
+  getKitchenRecovery = asyncHandler(async (req: Request, res: Response) => {
+    const auth = req.auth!;
+    const { orderId } = req.params as { orderId: string };
+    const data = await this.service.getKitchenRecovery(auth.restaurantId, orderId);
+    sendSuccess(res, data, { message: "Kitchen recovery diagnostics" });
+  });
+
+  getKitchenDispatchAudit = asyncHandler(async (req: Request, res: Response) => {
+    const auth = req.auth!;
+    const { orderId } = req.params as { orderId: string };
+    const data = await this.service.getKitchenDispatchAudit(auth.restaurantId, orderId);
+    sendSuccess(res, data, { message: "Kitchen dispatch audit log" });
+  });
+
+  dispatchPendingKitchen = asyncHandler(async (req: Request, res: Response) => {
+    const auth = req.auth!;
+    const { orderId } = req.params as { orderId: string };
+    const body = req.body as { clientMutationId: string; version?: number };
+    const data = await this.service.dispatchPendingKitchen({
+      restaurantId: auth.restaurantId,
+      orderId,
+      actorUserId: auth.userId,
+      clientMutationId: body.clientMutationId,
+      version: body.version,
+    });
+    sendSuccess(res, data, { message: "Pending kitchen changes dispatched" });
+  });
+
+  fullKitchenReprint = asyncHandler(async (req: Request, res: Response) => {
+    const auth = req.auth!;
+    const { orderId } = req.params as { orderId: string };
+    const body = req.body as { clientMutationId: string; lineIds?: string[] };
+    const data = await this.service.fullKitchenReprint({
+      restaurantId: auth.restaurantId,
+      orderId,
+      actorUserId: auth.userId,
+      clientMutationId: body.clientMutationId,
+      lineIds: body.lineIds,
+    });
+    sendSuccess(res, data, { message: "Kitchen full reprint dispatched" });
   });
 }

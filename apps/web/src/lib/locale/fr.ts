@@ -555,6 +555,24 @@ export const fr = {
     sectionPreparing: "En préparation",
   },
 
+  takeawayCheckout: {
+    title: "Encaisser la commande",
+    desc: (num: string, name: string) => `Commande à emporter n°${num} — ${name}`,
+    total: "Montant total",
+    amountReceived: "Montant reçu",
+    changeToReturn: "Monnaie à rendre",
+    exactPayment: "Montant exact",
+    noChange: "Pas de monnaie à rendre.",
+    owes: (amount: string) => `Il reste ${amount} à payer`,
+    quickCash: "Espèces rapides",
+    quickExact: "Montant exact",
+    cancel: "Annuler",
+    confirm: "Encaisser & Imprimer",
+    confirmLoading: "Encaissement…",
+    printWarning: "Paiement enregistré, mais l’impression du ticket a échoué.",
+    paymentError: "Paiement impossible.",
+  },
+
   takeawayOrderCard: {
     statusNew: "Nouvelle commande",
     statusPreparing: "En préparation",
@@ -568,7 +586,7 @@ export const fr = {
     estCompleted: "Terminé",
     startPreparing: "Lancer en cuisine",
     markReady: "Marquer prête",
-    markDelivered: "Marquer livrée",
+    encaisser: "Encaisser",
     cancel: "Annuler",
     statusLine: "Statut :",
     takeawayNum: (n: string) => `À emporter n°${n}`,

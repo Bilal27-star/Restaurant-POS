@@ -8,8 +8,8 @@ generator client {
   provider      = "prisma-client-js"
   /// Ship query engines for all desktop targets (build host + other OS/arch).
   /// `native` matches the machine running `prisma generate` (CI + dev); others cover installed apps.
-  engineType     = "binary"
-  binaryTargets  = ["native", "darwin-arm64", "darwin", "windows"]
+  engineType    = "binary"
+  binaryTargets = ["native", "darwin-arm64", "darwin", "windows"]
 }
 
 datasource db {
@@ -114,46 +114,106 @@ enum SyncMutationStatus {
   DEAD
 }
 
+/// Offline replay idempotency for order line mutations (add / update / delete).
+enum OrderLineMutationKind {
+  LINE_ADD
+  LINE_UPDATE
+  LINE_DELETE
+}
+
+/// Per-line kitchen dispatch state (Kitchen Delta Printing v2.1).
+enum OrderItemKitchenStatus {
+  PENDING
+  SENT
+  MODIFIED
+  PRINT_FAILED
+}
+
+enum KitchenPrintIntentStatus {
+  PENDING
+  ENQUEUED
+  PARTIAL
+  FAILED
+  COMPLETED
+}
+
+enum KitchenPrintIntentStationStatus {
+  PENDING
+  ENQUEUED
+  FAILED
+  COMPLETED
+}
+
+enum KitchenMutationKind {
+  CREATE
+  LINE_ADD
+  LINE_UPDATE
+  LINE_DELETE
+  DISPATCH_PENDING
+  ORDER_INFO
+  FULL_REPRINT
+}
+
+enum KitchenTicketMode {
+  NEW
+  UPDATE
+  CANCEL
+  INFO
+  FULL_REPRINT
+}
+
+enum OrderItemKitchenAuditEvent {
+  SENT
+  MODIFIED
+  REMOVED
+  PRINT_FAILED
+  FULL_REPRINT
+}
+
 // -----------------------------------------------------------------------------
 // Tenant & settings
 // -----------------------------------------------------------------------------
 
 model Restaurant {
-  id        String   @id @default(uuid()) @db.Uuid
-  name      String
-  slug      String   @unique
-  timezone  String   @default("UTC")
+  id           String  @id @default(uuid()) @db.Uuid
+  name         String
+  slug         String  @unique
+  timezone     String  @default("UTC")
   /// ISO 4217 (e.g. DZD, EUR)
-  currencyCode String @default("DZD") @map("currency_code")
-  legalName String?  @map("legal_name")
-  taxId     String?  @map("tax_id")
+  currencyCode String  @default("DZD") @map("currency_code")
+  legalName    String? @map("legal_name")
+  taxId        String? @map("tax_id")
 
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
   deletedAt DateTime? @map("deleted_at")
 
-  users              User[]
-  floors             RestaurantFloor[]
-  tables             RestaurantTable[]
-  menuCategories     MenuCategory[]
-  menuItems          MenuItem[]
-  customers          Customer[]
-  orders             Order[]
-  shifts             Shift[]
-  payments           Payment[]
-  cashTransactions   CashTransaction[]
-  expenses           Expense[]
-  roles              Role[]
-  expenseCategories  ExpenseCategory[]
-  systemSettings     SystemSettings?
-  dailySalesSnapshots DailySalesSnapshot[]
-  syncMutations      SyncMutation[]
-  registeredDevices  RegisteredDevice[]
-  loginAuditLogs     LoginAuditLog[]
-  securityAuditLogs  SecurityAuditLog[]
-  orderNumberCounters OrderNumberCounter[]
-  printers            RestaurantPrinter[]
-  printJobs           PrintJob[]
+  users                          User[]
+  floors                         RestaurantFloor[]
+  tables                         RestaurantTable[]
+  menuCategories                 MenuCategory[]
+  menuItems                      MenuItem[]
+  customers                      Customer[]
+  orders                         Order[]
+  shifts                         Shift[]
+  payments                       Payment[]
+  cashTransactions               CashTransaction[]
+  expenses                       Expense[]
+  roles                          Role[]
+  expenseCategories              ExpenseCategory[]
+  systemSettings                 SystemSettings?
+  dailySalesSnapshots            DailySalesSnapshot[]
+  syncMutations                  SyncMutation[]
+  registeredDevices              RegisteredDevice[]
+  loginAuditLogs                 LoginAuditLog[]
+  securityAuditLogs              SecurityAuditLog[]
+  orderNumberCounters            OrderNumberCounter[]
+  printers                       RestaurantPrinter[]
+  printJobs                      PrintJob[]
+  orderLineMutationIdempotencies OrderLineMutationIdempotency[]
+  kitchenPrintIntents            KitchenPrintIntent[]
+  kitchenDispatchAuditLogs       KitchenDispatchAuditLog[]
+  orderItemKitchenAudits         OrderItemKitchenAudit[]
 
   @@index([deletedAt])
   @@map("restaurants")
@@ -161,12 +221,12 @@ model Restaurant {
 
 /// Single row per restaurant; JSON for printer profiles, tax rules, i18n, etc.
 model SystemSettings {
-  id           String   @id @default(uuid()) @db.Uuid
-  restaurantId String   @unique @map("restaurant_id") @db.Uuid
+  id           String @id @default(uuid()) @db.Uuid
+  restaurantId String @unique @map("restaurant_id") @db.Uuid
 
   restaurantName String  @map("restaurant_name")
-  address          String?
-  phone            String?
+  address        String?
+  phone          String?
 
   /// Printers, tax, locale, receipt footer, etc. (validated at app layer)
   settingsJson Json @default("{}") @map("settings_json")
@@ -185,27 +245,27 @@ model SystemSettings {
 // -----------------------------------------------------------------------------
 
 model User {
-  id              String    @id @default(uuid()) @db.Uuid
-  restaurantId    String    @map("restaurant_id") @db.Uuid
+  id           String @id @default(uuid()) @db.Uuid
+  restaurantId String @map("restaurant_id") @db.Uuid
 
-  fullName        String    @map("full_name")
-  username        String
-  phone           String?
-  email           String?
-  hashedPassword  String    @map("hashed_password")
+  fullName       String     @map("full_name")
+  username       String
+  phone          String?
+  email          String?
+  hashedPassword String     @map("hashed_password")
   /// bcrypt/argon hash of numeric PIN for POS quick auth (nullable if PIN disabled)
-  pinHash         String?   @map("pin_hash")
-  avatarUrl       String?   @map("avatar_url")
-  status          UserStatus @default(ACTIVE)
+  pinHash        String?    @map("pin_hash")
+  avatarUrl      String?    @map("avatar_url")
+  status         UserStatus @default(ACTIVE)
 
   /// Failed password/PIN attempts (reset on successful login).
   failedLoginCount Int       @default(0) @map("failed_login_count")
   /// Account temporarily locked after repeated failures.
   lockedUntil      DateTime? @map("locked_until")
 
-  version   Int      @default(1)
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  version   Int       @default(1)
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
   deletedAt DateTime? @map("deleted_at")
 
   restaurant Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
@@ -213,16 +273,16 @@ model User {
   roles              UserRole[]
   sessions           Session[]
   loginAuditLogs     LoginAuditLog[]
-  securityAuditLogs SecurityAuditLog[]
-  ordersWaited       Order[]              @relation("OrderWaiter")
-  ordersCreated      Order[]              @relation("OrderCreatedBy")
-  shiftsOpened       Shift[]              @relation("ShiftOpenedBy")
-  shiftsClosed       Shift[]              @relation("ShiftClosedBy")
-  paymentsRecorded   Payment[]            @relation("PaymentRecordedBy")
-  expensesRecorded   Expense[]            @relation("ExpenseRecordedBy")
-  refundsCreated     Refund[]             @relation("RefundCreatedBy")
+  securityAuditLogs  SecurityAuditLog[]
+  ordersWaited       Order[]            @relation("OrderWaiter")
+  ordersCreated      Order[]            @relation("OrderCreatedBy")
+  shiftsOpened       Shift[]            @relation("ShiftOpenedBy")
+  shiftsClosed       Shift[]            @relation("ShiftClosedBy")
+  paymentsRecorded   Payment[]          @relation("PaymentRecordedBy")
+  expensesRecorded   Expense[]          @relation("ExpenseRecordedBy")
+  refundsCreated     Refund[]           @relation("RefundCreatedBy")
   syncMutations      SyncMutation[]
-  printJobsRequested PrintJob[]       @relation("PrintJobRequestedBy")
+  printJobsRequested PrintJob[]         @relation("PrintJobRequestedBy")
 
   @@unique([restaurantId, username])
   @@unique([restaurantId, email])
@@ -233,7 +293,7 @@ model User {
 
 model Role {
   id           String   @id @default(uuid()) @db.Uuid
-  restaurantId String  @map("restaurant_id") @db.Uuid
+  restaurantId String   @map("restaurant_id") @db.Uuid
   code         RoleCode
   name         String
   description  String?
@@ -245,8 +305,8 @@ model Role {
 
   restaurant Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
 
-  users        UserRole[]
-  permissions  RolePermission[]
+  users       UserRole[]
+  permissions RolePermission[]
 
   @@unique([restaurantId, code])
   @@index([restaurantId])
@@ -254,9 +314,9 @@ model Role {
 }
 
 model Permission {
-  id          String @id @default(uuid()) @db.Uuid
+  id          String  @id @default(uuid()) @db.Uuid
   /// Stable machine code, e.g. `orders:create`, `menu:edit`
-  code        String @unique
+  code        String  @unique
   description String?
 
   createdAt DateTime @default(now()) @map("created_at")
@@ -290,13 +350,13 @@ model UserRole {
 }
 
 model Session {
-  id         String   @id @default(uuid()) @db.Uuid
-  userId     String   @map("user_id") @db.Uuid
-  tokenHash  String   @map("token_hash")
-  userAgent  String?  @map("user_agent")
-  ipAddress  String?  @map("ip_address") @db.Inet
-  expiresAt  DateTime @map("expires_at")
-  revokedAt  DateTime? @map("revoked_at")
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @map("user_id") @db.Uuid
+  tokenHash String    @map("token_hash")
+  userAgent String?   @map("user_agent")
+  ipAddress String?   @map("ip_address") @db.Inet
+  expiresAt DateTime  @map("expires_at")
+  revokedAt DateTime? @map("revoked_at")
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -310,15 +370,15 @@ model Session {
 
 /// Login / logout / failed attempt audit (retention policies at app/ops layer).
 model LoginAuditLog {
-  id                 String   @id @default(uuid()) @db.Uuid
-  restaurantId       String   @map("restaurant_id") @db.Uuid
-  userId             String?  @map("user_id") @db.Uuid
-  usernameAttempted  String   @map("username_attempted")
-  ipAddress          String?  @map("ip_address")
-  userAgent          String?  @map("user_agent")
-  success            Boolean
-  failureReason      String?  @map("failure_reason")
-  event              String   @default("login") /// login | logout | refresh | lockout
+  id                String  @id @default(uuid()) @db.Uuid
+  restaurantId      String  @map("restaurant_id") @db.Uuid
+  userId            String? @map("user_id") @db.Uuid
+  usernameAttempted String  @map("username_attempted")
+  ipAddress         String? @map("ip_address")
+  userAgent         String? @map("user_agent")
+  success           Boolean
+  failureReason     String? @map("failure_reason")
+  event             String  @default("login") /// login | logout | refresh | lockout
 
   createdAt DateTime @default(now()) @map("created_at")
 
@@ -332,15 +392,15 @@ model LoginAuditLog {
 
 /// Sensitive domain mutations (refunds, cancellations, menu, settings) for compliance review.
 model SecurityAuditLog {
-  id             String   @id @default(uuid()) @db.Uuid
-  restaurantId   String   @map("restaurant_id") @db.Uuid
-  actorUserId    String?  @map("actor_user_id") @db.Uuid
-  action         String
-  resourceType   String?  @map("resource_type")
-  resourceId     String?  @map("resource_id")
-  metadataJson   Json?    @map("metadata_json")
-  ipAddress      String?  @map("ip_address")
-  userAgent      String?  @map("user_agent")
+  id           String  @id @default(uuid()) @db.Uuid
+  restaurantId String  @map("restaurant_id") @db.Uuid
+  actorUserId  String? @map("actor_user_id") @db.Uuid
+  action       String
+  resourceType String? @map("resource_type")
+  resourceId   String? @map("resource_id")
+  metadataJson Json?   @map("metadata_json")
+  ipAddress    String? @map("ip_address")
+  userAgent    String? @map("user_agent")
 
   createdAt DateTime @default(now()) @map("created_at")
 
@@ -362,8 +422,8 @@ model RestaurantFloor {
   name         String
   sortOrder    Int    @default(0) @map("sort_order")
 
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
   deletedAt DateTime? @map("deleted_at")
 
   restaurant Restaurant        @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
@@ -385,16 +445,16 @@ model RestaurantTable {
   /// POS fast-path to open order (must match `Order.id` where order is open)
   currentOrderId String? @unique @map("current_order_id") @db.Uuid
 
-  version   Int      @default(1)
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  version   Int       @default(1)
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
   deletedAt DateTime? @map("deleted_at")
 
-  restaurant    Restaurant     @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
-  floor         RestaurantFloor? @relation(fields: [floorId], references: [id], onDelete: SetNull)
-  currentOrder  Order?         @relation("TableCurrentOrder", fields: [currentOrderId], references: [id], onDelete: SetNull)
-  orders        Order[]        @relation("OrderTable")
-  reservations  TableReservation[]
+  restaurant   Restaurant         @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  floor        RestaurantFloor?   @relation(fields: [floorId], references: [id], onDelete: SetNull)
+  currentOrder Order?             @relation("TableCurrentOrder", fields: [currentOrderId], references: [id], onDelete: SetNull)
+  orders       Order[]            @relation("OrderTable")
+  reservations TableReservation[]
 
   @@unique([restaurantId, floorId, number])
   @@index([restaurantId, status])
@@ -403,14 +463,14 @@ model RestaurantTable {
 }
 
 model TableReservation {
-  id           String   @id @default(uuid()) @db.Uuid
-  tableId      String   @map("table_id") @db.Uuid
-  partyName    String   @map("party_name")
-  partySize    Int      @map("party_size")
-  startsAt     DateTime @map("starts_at")
-  endsAt       DateTime @map("ends_at")
-  notes        String?
-  cancelledAt  DateTime? @map("cancelled_at")
+  id          String    @id @default(uuid()) @db.Uuid
+  tableId     String    @map("table_id") @db.Uuid
+  partyName   String    @map("party_name")
+  partySize   Int       @map("party_size")
+  startsAt    DateTime  @map("starts_at")
+  endsAt      DateTime  @map("ends_at")
+  notes       String?
+  cancelledAt DateTime? @map("cancelled_at")
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -426,17 +486,17 @@ model TableReservation {
 // -----------------------------------------------------------------------------
 
 model MenuCategory {
-  id           String @id @default(uuid()) @db.Uuid
-  restaurantId String @map("restaurant_id") @db.Uuid
+  id           String  @id @default(uuid()) @db.Uuid
+  restaurantId String  @map("restaurant_id") @db.Uuid
   name         String
   slug         String
-  sortOrder    Int    @default(0) @map("sort_order")
+  sortOrder    Int     @default(0) @map("sort_order")
   colorToken   String? @map("color_token")
   iconKey      String? @map("icon_key")
 
-  version   Int      @default(1)
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  version   Int       @default(1)
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
   deletedAt DateTime? @map("deleted_at")
 
   restaurant Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
@@ -448,33 +508,33 @@ model MenuCategory {
 }
 
 model MenuItem {
-  id           String  @id @default(uuid()) @db.Uuid
-  restaurantId String  @map("restaurant_id") @db.Uuid
-  categoryId   String  @map("category_id") @db.Uuid
+  id           String @id @default(uuid()) @db.Uuid
+  restaurantId String @map("restaurant_id") @db.Uuid
+  categoryId   String @map("category_id") @db.Uuid
 
   name        String
-  description String   @default("")
-  imageUrl    String?  @map("image_url")
-  basePrice   Decimal  @map("base_price") @db.Decimal(14, 2)
-  available   Boolean  @default(true)
-  popular     Boolean  @default(false)
+  description String  @default("")
+  imageUrl    String? @map("image_url")
+  basePrice   Decimal @map("base_price") @db.Decimal(14, 2)
+  available   Boolean @default(true)
+  popular     Boolean @default(false)
 
   /// Kitchen routing destination
   kitchenStation KitchenStation?
 
-  sortOrder   Int      @default(0) @map("sort_order")
+  sortOrder Int @default(0) @map("sort_order")
 
-  version   Int      @default(1)
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  version   Int       @default(1)
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
   deletedAt DateTime? @map("deleted_at")
 
-  restaurant  Restaurant   @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
-  category    MenuCategory @relation(fields: [categoryId], references: [id], onDelete: Restrict)
-  ingredients Ingredient[]
-  modifiers   Modifier[]
+  restaurant        Restaurant         @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  category          MenuCategory       @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  ingredients       Ingredient[]
+  modifiers         Modifier[]
   menuItemModifiers MenuItemModifier[]
-  orderItems  OrderItem[]
+  orderItems        OrderItem[]
 
   @@index([restaurantId, categoryId, sortOrder])
   @@index([restaurantId, available])
@@ -508,8 +568,8 @@ model Modifier {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  menuItem          MenuItem           @relation(fields: [menuItemId], references: [id], onDelete: Cascade)
-  menuItemModifiers MenuItemModifier[]
+  menuItem           MenuItem            @relation(fields: [menuItemId], references: [id], onDelete: Cascade)
+  menuItemModifiers  MenuItemModifier[]
   orderItemModifiers OrderItemModifier[]
 
   @@index([menuItemId, sortOrder])
@@ -545,8 +605,8 @@ model Customer {
   address String?
   notes   String?
 
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
   deletedAt DateTime? @map("deleted_at")
 
   restaurant Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
@@ -583,6 +643,8 @@ model Order {
   tableId    String? @map("table_id") @db.Uuid
   customerId String? @map("customer_id") @db.Uuid
   waiterId   String? @map("waiter_id") @db.Uuid
+  /// Free-text server name from POS (optional; independent of `waiterId`).
+  waiterName String? @map("waiter_name") @db.VarChar(120)
   /// Guests / couverts for dine-in (POS headcount); optional for takeaway.
   partySize  Int?    @map("party_size")
 
@@ -598,11 +660,11 @@ model Order {
   total         Decimal @default(0) @map("total") @db.Decimal(14, 2)
 
   /// Denormalized for fast filters / analytics ingestion
-  paidTotal         Decimal           @default(0) @map("paid_total") @db.Decimal(14, 2)
-  paymentStatus     OrderPaymentStatus @default(UNPAID) @map("payment_status")
+  paidTotal     Decimal            @default(0) @map("paid_total") @db.Decimal(14, 2)
+  paymentStatus OrderPaymentStatus @default(UNPAID) @map("payment_status")
 
-  openedAt  DateTime  @default(now()) @map("opened_at")
-  closedAt  DateTime? @map("closed_at")
+  openedAt DateTime  @default(now()) @map("opened_at")
+  closedAt DateTime? @map("closed_at")
 
   version   Int      @default(1)
   createdAt DateTime @default(now()) @map("created_at")
@@ -611,16 +673,21 @@ model Order {
   /// Client-generated id (offline outbox `clientMutationId`) for exactly-once order creation per restaurant.
   offlineClientMutationId String? @map("offline_client_mutation_id") @db.VarChar(128)
 
-  restaurant Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
-  table      RestaurantTable? @relation("OrderTable", fields: [tableId], references: [id], onDelete: SetNull)
-  customer   Customer?      @relation(fields: [customerId], references: [id], onDelete: SetNull)
-  waiter     User?          @relation("OrderWaiter", fields: [waiterId], references: [id], onDelete: SetNull)
-  createdBy  User?          @relation("OrderCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  /// Incremented when a kitchen print intent leaves PENDING (audit / ordering).
+  kitchenDispatchGeneration Int @default(0) @map("kitchen_dispatch_generation")
 
-  currentTable RestaurantTable? @relation("TableCurrentOrder")
-  items        OrderItem[]
-  payments     Payment[]
-  refunds      Refund[]
+  restaurant Restaurant       @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  table      RestaurantTable? @relation("OrderTable", fields: [tableId], references: [id], onDelete: SetNull)
+  customer   Customer?        @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  waiter     User?            @relation("OrderWaiter", fields: [waiterId], references: [id], onDelete: SetNull)
+  createdBy  User?            @relation("OrderCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+
+  currentTable              RestaurantTable?               @relation("TableCurrentOrder")
+  items                     OrderItem[]
+  payments                  Payment[]
+  refunds                   Refund[]
+  lineMutationIdempotencies OrderLineMutationIdempotency[]
+  kitchenPrintIntents       KitchenPrintIntent[]
 
   /// Hot path: open-ticket lists use closed_at IS NULL + restaurant_id + opened_at DESC. Partial index in migration `orders_active_by_restaurant_opened_idx`.
   @@unique([restaurantId, orderNumber])
@@ -654,8 +721,8 @@ model OrderNumberCounter {
 }
 
 model OrderItem {
-  id         String @id @default(uuid()) @db.Uuid
-  orderId    String @map("order_id") @db.Uuid
+  id         String  @id @default(uuid()) @db.Uuid
+  orderId    String  @map("order_id") @db.Uuid
   menuItemId String? @map("menu_item_id") @db.Uuid
 
   /// Snapshot at sale time (menu edits must not change historical tickets)
@@ -669,23 +736,31 @@ model OrderItem {
   /// Snapshot of removed ingredient labels (e.g. "Onion") for kitchen / tickets.
   removedIngredients Json @default("[]") @map("removed_ingredients")
 
+  kitchenStatus           OrderItemKitchenStatus @default(PENDING) @map("kitchen_status")
+  kitchenStation          KitchenStation?        @map("kitchen_station")
+  kitchenSentAt           DateTime?              @map("kitchen_sent_at")
+  kitchenRevision         Int                    @default(0) @map("kitchen_revision")
+  kitchenLastSentSnapshot Json?                  @map("kitchen_last_sent_snapshot")
+  kitchenSnapshotHash     String?                @map("kitchen_snapshot_hash") @db.VarChar(64)
+
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  order    Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  menuItem MenuItem? @relation(fields: [menuItemId], references: [id], onDelete: SetNull)
+  order     Order               @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  menuItem  MenuItem?           @relation(fields: [menuItemId], references: [id], onDelete: SetNull)
   modifiers OrderItemModifier[]
 
   @@index([orderId, sortOrder])
+  @@index([orderId, kitchenStatus])
   @@map("order_items")
 }
 
 model OrderItemModifier {
-  id          String @id @default(uuid()) @db.Uuid
-  orderItemId String @map("order_item_id") @db.Uuid
+  id          String  @id @default(uuid()) @db.Uuid
+  orderItemId String  @map("order_item_id") @db.Uuid
   modifierId  String? @map("modifier_id") @db.Uuid
 
-  label     String
+  label      String
   priceDelta Decimal @default(0) @map("price_delta") @db.Decimal(14, 2)
 
   createdAt DateTime @default(now()) @map("created_at")
@@ -697,28 +772,139 @@ model OrderItemModifier {
   @@map("order_item_modifiers")
 }
 
+/// Exactly-once ledger for offline `clientMutationId` on line add / update / delete.
+model OrderLineMutationIdempotency {
+  id               String                @id @default(uuid()) @db.Uuid
+  restaurantId     String                @map("restaurant_id") @db.Uuid
+  clientMutationId String                @map("client_mutation_id") @db.VarChar(128)
+  kind             OrderLineMutationKind
+  orderId          String                @map("order_id") @db.Uuid
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  restaurant Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  order      Order      @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  kitchenPrintIntents KitchenPrintIntent[]
+
+  @@unique([restaurantId, clientMutationId])
+  @@index([orderId])
+  @@map("order_line_mutation_idempotency")
+}
+
+model KitchenPrintIntent {
+  id                         String                   @id @default(uuid()) @db.Uuid
+  restaurantId               String                   @map("restaurant_id") @db.Uuid
+  orderId                    String                   @map("order_id") @db.Uuid
+  clientMutationId           String                   @map("client_mutation_id") @db.VarChar(128)
+  lineMutationIdempotencyId  String?                  @map("line_mutation_idempotency_id") @db.Uuid
+  mutationKind               KitchenMutationKind      @map("mutation_kind")
+  ticketMode                 KitchenTicketMode        @map("ticket_mode")
+  status                     KitchenPrintIntentStatus @default(PENDING)
+  payloadJson                Json                     @map("payload_json")
+  dispatchGenerationAtCreate Int                      @map("dispatch_generation_at_create")
+  createdAt                  DateTime                 @default(now()) @map("created_at")
+  updatedAt                  DateTime                 @updatedAt @map("updated_at")
+  enqueuedAt                 DateTime?                @map("enqueued_at")
+  completedAt                DateTime?                @map("completed_at")
+  failedAt                   DateTime?                @map("failed_at")
+
+  restaurant              Restaurant                   @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  order                   Order                        @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  lineMutationIdempotency OrderLineMutationIdempotency? @relation(fields: [lineMutationIdempotencyId], references: [id], onDelete: SetNull)
+  stations                KitchenPrintIntentStation[]
+  kitchenAudits           OrderItemKitchenAudit[]
+
+  @@unique([restaurantId, clientMutationId])
+  @@index([orderId])
+  @@index([restaurantId, status, createdAt])
+  @@index([status, createdAt])
+  @@map("kitchen_print_intents")
+}
+
+model KitchenPrintIntentStation {
+  id          String                          @id @default(uuid()) @db.Uuid
+  intentId    String                          @map("intent_id") @db.Uuid
+  station     KitchenStation
+  status      KitchenPrintIntentStationStatus @default(PENDING)
+  printJobId  String?                         @unique @map("print_job_id") @db.Uuid
+  payloadJson Json                            @map("payload_json")
+  lastError   String?                         @map("last_error")
+  createdAt   DateTime                        @default(now()) @map("created_at")
+  updatedAt   DateTime                        @updatedAt @map("updated_at")
+  enqueuedAt  DateTime?                       @map("enqueued_at")
+  failedAt    DateTime?                       @map("failed_at")
+
+  intent   KitchenPrintIntent @relation(fields: [intentId], references: [id], onDelete: Cascade)
+  printJob PrintJob?          @relation(fields: [printJobId], references: [id], onDelete: SetNull)
+
+  @@unique([intentId, station])
+  @@index([intentId, status])
+  @@map("kitchen_print_intent_stations")
+}
+
+model OrderItemKitchenAudit {
+  id           String                     @id @default(uuid()) @db.Uuid
+  restaurantId String                     @map("restaurant_id") @db.Uuid
+  orderId      String                     @map("order_id") @db.Uuid
+  orderItemId  String                     @map("order_item_id") @db.Uuid
+  event        OrderItemKitchenAuditEvent
+  snapshotJson Json                       @map("snapshot_json")
+  intentId     String?                    @map("intent_id") @db.Uuid
+  createdAt    DateTime                   @default(now()) @map("created_at")
+
+  restaurant Restaurant          @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  intent     KitchenPrintIntent? @relation(fields: [intentId], references: [id], onDelete: SetNull)
+
+  @@index([orderId, createdAt])
+  @@index([restaurantId, orderId, createdAt])
+  @@index([intentId])
+  @@index([orderItemId])
+  @@map("order_item_kitchen_audit")
+}
+
+/// Per-line kitchen dispatch trace (orderId, lineId, mutation, status, timestamp).
+model KitchenDispatchAuditLog {
+  id           String              @id @default(uuid()) @db.Uuid
+  restaurantId String              @map("restaurant_id") @db.Uuid
+  orderId      String              @map("order_id") @db.Uuid
+  orderItemId  String?             @map("order_item_id") @db.Uuid
+  mutationKind KitchenMutationKind @map("mutation_kind")
+  intentId     String              @map("intent_id") @db.Uuid
+  printJobId   String?             @map("print_job_id") @db.Uuid
+  status       String              @db.VarChar(32)
+  dispatchedAt DateTime            @default(now()) @map("dispatched_at")
+
+  restaurant Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+
+  @@index([orderId, dispatchedAt])
+  @@index([restaurantId, orderId, dispatchedAt])
+  @@index([intentId])
+  @@index([orderItemId])
+  @@map("kitchen_dispatch_audit_logs")
+}
+
 // -----------------------------------------------------------------------------
 // Payments & cash
 // -----------------------------------------------------------------------------
 
 model Payment {
-  id           String @id @default(uuid()) @db.Uuid
-  restaurantId String @map("restaurant_id") @db.Uuid
-  orderId      String @map("order_id") @db.Uuid
+  id           String  @id @default(uuid()) @db.Uuid
+  restaurantId String  @map("restaurant_id") @db.Uuid
+  orderId      String  @map("order_id") @db.Uuid
   shiftId      String? @map("shift_id") @db.Uuid
 
-  method        PaymentMethod
-  status        PaymentStatus @default(PENDING)
+  method         PaymentMethod
+  status         PaymentStatus @default(PENDING)
   /// Amount applied to the order (portion of split payment)
-  amount        Decimal       @map("amount") @db.Decimal(14, 2)
+  amount         Decimal       @map("amount") @db.Decimal(14, 2)
   /// Cash: amount tendered by customer
-  amountReceived Decimal?     @map("amount_received") @db.Decimal(14, 2)
+  amountReceived Decimal?      @map("amount_received") @db.Decimal(14, 2)
   /// Cash: change returned
-  changeGiven   Decimal?      @map("change_given") @db.Decimal(14, 2)
+  changeGiven    Decimal?      @map("change_given") @db.Decimal(14, 2)
 
   idempotencyKey String? @unique @map("idempotency_key")
 
-  recordedByUserId String? @map("recorded_by_user_id") @db.Uuid
+  recordedByUserId String?   @map("recorded_by_user_id") @db.Uuid
   processedAt      DateTime? @map("processed_at")
 
   createdAt DateTime @default(now()) @map("created_at")
@@ -727,7 +913,7 @@ model Payment {
   restaurant Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
   order      Order      @relation(fields: [orderId], references: [id], onDelete: Restrict)
   shift      Shift?     @relation(fields: [shiftId], references: [id], onDelete: SetNull)
-  recordedBy User?     @relation("PaymentRecordedBy", fields: [recordedByUserId], references: [id], onDelete: SetNull)
+  recordedBy User?      @relation("PaymentRecordedBy", fields: [recordedByUserId], references: [id], onDelete: SetNull)
 
   cashTransactions CashTransaction[]
   refunds          Refund[]
@@ -740,12 +926,12 @@ model Payment {
 }
 
 model Refund {
-  id              String   @id @default(uuid()) @db.Uuid
-  paymentId       String   @map("payment_id") @db.Uuid
-  orderId         String   @map("order_id") @db.Uuid
-  amount          Decimal  @db.Decimal(14, 2)
+  id              String  @id @default(uuid()) @db.Uuid
+  paymentId       String  @map("payment_id") @db.Uuid
+  orderId         String  @map("order_id") @db.Uuid
+  amount          Decimal @db.Decimal(14, 2)
   reason          String?
-  createdByUserId String?  @map("created_by_user_id") @db.Uuid
+  createdByUserId String? @map("created_by_user_id") @db.Uuid
 
   createdAt DateTime @default(now()) @map("created_at")
 
@@ -765,7 +951,7 @@ model CashTransaction {
 
   type   CashTransactionType
   /// Signed amount in restaurant currency (convention: inflows positive, outflows negative — enforce in app)
-  amount Decimal @db.Decimal(14, 2)
+  amount Decimal             @db.Decimal(14, 2)
 
   paymentId String? @map("payment_id") @db.Uuid
   expenseId String? @map("expense_id") @db.Uuid
@@ -792,15 +978,15 @@ model Shift {
   id           String @id @default(uuid()) @db.Uuid
   restaurantId String @map("restaurant_id") @db.Uuid
 
-  openedByUserId String   @map("opened_by_user_id") @db.Uuid
-  closedByUserId String?  @map("closed_by_user_id") @db.Uuid
+  openedByUserId String  @map("opened_by_user_id") @db.Uuid
+  closedByUserId String? @map("closed_by_user_id") @db.Uuid
 
   status ShiftStatus @default(OPEN)
 
-  openingCashFloat  Decimal  @map("opening_cash_float") @db.Decimal(14, 2)
-  closingCashCount  Decimal? @map("closing_cash_count") @db.Decimal(14, 2)
-  expectedCash      Decimal? @map("expected_cash") @db.Decimal(14, 2)
-  variance          Decimal? @db.Decimal(14, 2)
+  openingCashFloat Decimal  @map("opening_cash_float") @db.Decimal(14, 2)
+  closingCashCount Decimal? @map("closing_cash_count") @db.Decimal(14, 2)
+  expectedCash     Decimal? @map("expected_cash") @db.Decimal(14, 2)
+  variance         Decimal? @db.Decimal(14, 2)
 
   /// Denormalized shift totals (updated on each captured payment / refund) for fast POS summaries.
   grossSales         Decimal @default(0) @map("gross_sales") @db.Decimal(14, 2)
@@ -816,9 +1002,9 @@ model Shift {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  restaurant       Restaurant        @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
-  openedBy         User              @relation("ShiftOpenedBy", fields: [openedByUserId], references: [id], onDelete: Restrict)
-  closedBy         User?             @relation("ShiftClosedBy", fields: [closedByUserId], references: [id], onDelete: SetNull)
+  restaurant Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  openedBy   User       @relation("ShiftOpenedBy", fields: [openedByUserId], references: [id], onDelete: Restrict)
+  closedBy   User?      @relation("ShiftClosedBy", fields: [closedByUserId], references: [id], onDelete: SetNull)
 
   payments         Payment[]
   expenses         Expense[]
@@ -829,11 +1015,11 @@ model Shift {
 }
 
 model ExpenseCategory {
-  id           String             @id @default(uuid()) @db.Uuid
-  restaurantId String           @map("restaurant_id") @db.Uuid
+  id           String              @id @default(uuid()) @db.Uuid
+  restaurantId String              @map("restaurant_id") @db.Uuid
   code         ExpenseCategoryCode
   name         String
-  sortOrder    Int                @default(0) @map("sort_order")
+  sortOrder    Int                 @default(0) @map("sort_order")
 
   restaurant Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
   expenses   Expense[]
@@ -848,10 +1034,10 @@ model Expense {
   shiftId      String @map("shift_id") @db.Uuid
   categoryId   String @map("category_id") @db.Uuid
 
-  amount          Decimal       @map("amount") @db.Decimal(14, 2)
-  description     String
-  paymentMethod   PaymentMethod @map("payment_method")
-  recordedByUserId String?      @map("recorded_by_user_id") @db.Uuid
+  amount           Decimal       @map("amount") @db.Decimal(14, 2)
+  description      String
+  paymentMethod    PaymentMethod @map("payment_method")
+  recordedByUserId String?       @map("recorded_by_user_id") @db.Uuid
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -878,16 +1064,16 @@ model DailySalesSnapshot {
   /// Business date in restaurant timezone (store as date at noon UTC or use Date; app normalizes)
   businessDate DateTime @map("business_date") @db.Date
 
-  grossSales     Decimal @map("gross_sales") @db.Decimal(14, 2)
-  netSales       Decimal @map("net_sales") @db.Decimal(14, 2)
-  taxTotal       Decimal @default(0) @map("tax_total") @db.Decimal(14, 2)
-  orderCount     Int     @default(0) @map("order_count")
-  takeawayCount  Int     @default(0) @map("takeaway_count")
-  paymentCash    Decimal @default(0) @map("payment_cash") @db.Decimal(14, 2)
-  paymentCard    Decimal @default(0) @map("payment_card") @db.Decimal(14, 2)
+  grossSales      Decimal @map("gross_sales") @db.Decimal(14, 2)
+  netSales        Decimal @map("net_sales") @db.Decimal(14, 2)
+  taxTotal        Decimal @default(0) @map("tax_total") @db.Decimal(14, 2)
+  orderCount      Int     @default(0) @map("order_count")
+  takeawayCount   Int     @default(0) @map("takeaway_count")
+  paymentCash     Decimal @default(0) @map("payment_cash") @db.Decimal(14, 2)
+  paymentCard     Decimal @default(0) @map("payment_card") @db.Decimal(14, 2)
   paymentTransfer Decimal @default(0) @map("payment_transfer") @db.Decimal(14, 2)
   /// Serialized top-SKU / hour histogram JSON for dashboards (optional denorm)
-  detailJson     Json?   @map("detail_json")
+  detailJson      Json?   @map("detail_json")
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -904,16 +1090,16 @@ model DailySalesSnapshot {
 // -----------------------------------------------------------------------------
 
 model RegisteredDevice {
-  id           String   @id @default(uuid()) @db.Uuid
-  restaurantId String   @map("restaurant_id") @db.Uuid
+  id           String    @id @default(uuid()) @db.Uuid
+  restaurantId String    @map("restaurant_id") @db.Uuid
   label        String
-  publicKey    String?  @map("public_key")
+  publicKey    String?   @map("public_key")
   lastSeenAt   DateTime? @map("last_seen_at")
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  restaurant   Restaurant    @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  restaurant    Restaurant     @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
   syncMutations SyncMutation[]
 
   @@index([restaurantId])
@@ -922,28 +1108,28 @@ model RegisteredDevice {
 
 /// Outbox for mutations produced offline (client-generated idempotency).
 model SyncMutation {
-  id             String @id @default(uuid()) @db.Uuid
-  restaurantId   String @map("restaurant_id") @db.Uuid
-  deviceId       String? @map("device_id") @db.Uuid
-  userId         String? @map("user_id") @db.Uuid
+  id           String  @id @default(uuid()) @db.Uuid
+  restaurantId String  @map("restaurant_id") @db.Uuid
+  deviceId     String? @map("device_id") @db.Uuid
+  userId       String? @map("user_id") @db.Uuid
 
-  clientMutationId String @unique @map("client_mutation_id")
-  entityType       String @map("entity_type")
+  clientMutationId String  @unique @map("client_mutation_id")
+  entityType       String  @map("entity_type")
   entityId         String? @map("entity_id") @db.Uuid
   operation        String
   payload          Json
 
-  status      SyncMutationStatus @default(PENDING)
-  attemptCount Int               @default(0) @map("attempt_count")
-  lastError   String?           @map("last_error")
-  processedAt DateTime?         @map("processed_at")
+  status       SyncMutationStatus @default(PENDING)
+  attemptCount Int                @default(0) @map("attempt_count")
+  lastError    String?            @map("last_error")
+  processedAt  DateTime?          @map("processed_at")
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  restaurant Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  restaurant Restaurant        @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
   device     RegisteredDevice? @relation(fields: [deviceId], references: [id], onDelete: SetNull)
-  user       User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+  user       User?             @relation(fields: [userId], references: [id], onDelete: SetNull)
 
   @@index([restaurantId, status, createdAt])
   @@map("sync_mutations")
@@ -986,16 +1172,16 @@ model RestaurantPrinter {
   id           String @id @default(uuid()) @db.Uuid
   restaurantId String @map("restaurant_id") @db.Uuid
 
-  name       String
-  role       PrinterRole
+  name            String
+  role            PrinterRole
   /// Route menu items to a specific kitchen printer (Pizza / Snacks / etc.)
-  kitchenStation KitchenStation? @map("kitchen_station")
+  kitchenStation  KitchenStation? @map("kitchen_station")
   /// e.g. RAW_ESCPOS, NETWORK_TCP, SPOOL_FILE
-  driver           String  @default("RAW_ESCPOS") @map("driver")
-  connectionJson   Json    @default("{}") @map("connection_json")
-  paperWidthChars  Int     @default(32) @map("paper_width_chars")
-  isDefault        Boolean @default(false) @map("is_default")
-  isActive         Boolean @default(true) @map("is_active")
+  driver          String          @default("RAW_ESCPOS") @map("driver")
+  connectionJson  Json            @default("{}") @map("connection_json")
+  paperWidthChars Int             @default(32) @map("paper_width_chars")
+  isDefault       Boolean         @default(false) @map("is_default")
+  isActive        Boolean         @default(true) @map("is_active")
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -1013,7 +1199,7 @@ model PrintJob {
   id           String @id @default(uuid()) @db.Uuid
   restaurantId String @map("restaurant_id") @db.Uuid
 
-  printerId String? @map("printer_id") @db.Uuid
+  printerId         String? @map("printer_id") @db.Uuid
   requestedByUserId String? @map("requested_by_user_id") @db.Uuid
 
   kind   PrintJobKind
@@ -1023,24 +1209,25 @@ model PrintJob {
   payloadJson Json @map("payload_json")
 
   /// Pre-rendered payload for offline workers (optional until rendered)
-  escposSha256         String? @map("escpos_sha256")
-  escposBytesBase64  String? @map("escpos_bytes_base64") @db.Text
+  escposSha256      String? @map("escpos_sha256")
+  escposBytesBase64 String? @map("escpos_bytes_base64") @db.Text
 
-  attempts    Int @default(0) @map("attempts")
-  maxAttempts Int @default(5) @map("max_attempts")
+  attempts    Int     @default(0) @map("attempts")
+  maxAttempts Int     @default(5) @map("max_attempts")
   lastError   String? @map("last_error")
   priority    Int     @default(0) @map("priority")
 
-  lockedAt   DateTime? @map("locked_at")
-  lockedBy   String?   @map("locked_by")
+  lockedAt DateTime? @map("locked_at")
+  lockedBy String?   @map("locked_by")
 
   createdAt   DateTime  @default(now()) @map("created_at")
   updatedAt   DateTime  @updatedAt @map("updated_at")
   completedAt DateTime? @map("completed_at")
 
-  restaurant  Restaurant         @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
-  printer     RestaurantPrinter? @relation(fields: [printerId], references: [id], onDelete: SetNull)
-  requestedBy User?              @relation("PrintJobRequestedBy", fields: [requestedByUserId], references: [id], onDelete: SetNull)
+  restaurant  Restaurant                 @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  printer     RestaurantPrinter?         @relation(fields: [printerId], references: [id], onDelete: SetNull)
+  requestedBy User?                      @relation("PrintJobRequestedBy", fields: [requestedByUserId], references: [id], onDelete: SetNull)
+  kitchenIntentStation KitchenPrintIntentStation?
 
   @@index([restaurantId, status, priority, createdAt])
   @@index([printerId, status])

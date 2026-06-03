@@ -108,7 +108,13 @@ async function executeOne(
         return { outcome: "dead", message: "invalid_payload:order.line.add" };
       }
       const { orderId, ...body } = payload as { orderId: string; [k: string]: unknown };
-      await api.orders.addLines(orderId, sanitizeAddOrderLinesPayload(body));
+      await api.orders.addLines(
+        orderId,
+        sanitizeAddOrderLinesPayload({
+          ...body,
+          clientMutationId: op.clientMutationId,
+        }),
+      );
       return { outcome: "accepted" };
     }
     case "order.line.update": {
@@ -116,19 +122,29 @@ async function executeOne(
         return { outcome: "dead", message: "invalid_payload:order.line.update" };
       }
       const { orderId, lineId, ...body } = payload as { orderId: string; lineId: string; [k: string]: unknown };
-      await api.orders.patchLine(orderId, lineId, sanitizeOrderLinePatchPayload(body));
+      await api.orders.patchLine(
+        orderId,
+        lineId,
+        sanitizeOrderLinePatchPayload({
+          ...body,
+          clientMutationId: op.clientMutationId,
+        }),
+      );
       return { outcome: "accepted" };
     }
     case "order.line.delete": {
       if (!isRecord(payload) || typeof payload.orderId !== "string" || typeof payload.lineId !== "string") {
         return { outcome: "dead", message: "invalid_payload:order.line.delete" };
       }
-      const { orderId, lineId, query } = payload as {
+      const { orderId, lineId, query, ...body } = payload as {
         orderId: string;
         lineId: string;
         query?: Record<string, string>;
+        [k: string]: unknown;
       };
-      await api.orders.deleteLine(orderId, lineId, query);
+      const q: Record<string, string> = { ...(query ?? {}) };
+      q.clientMutationId = op.clientMutationId;
+      await api.orders.deleteLine(orderId, lineId, q);
       return { outcome: "accepted" };
     }
     case "order.complete": {

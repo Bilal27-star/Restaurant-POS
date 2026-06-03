@@ -18,6 +18,8 @@ import {
   completeOrderBody,
   createOrderBody,
   deleteLineQuery,
+  fullKitchenReprintBody,
+  dispatchPendingKitchenBody,
   historyOrdersQuery,
   listOrdersQuery,
   orderIdParams,
@@ -34,9 +36,9 @@ export function createOrdersRouter(env: Env): Router {
   const requireOrdersRead = createRequirePermission(PermissionCodes.ORDERS_READ);
   const requireOrdersCreate = createRequirePermission(PermissionCodes.ORDERS_CREATE);
   const requireOrdersUpdate = createRequirePermission(PermissionCodes.ORDERS_UPDATE);
-  const requireOrdersDelete = createRequirePermission(PermissionCodes.ORDERS_DELETE);
   const requirePayments = createRequirePermission(PermissionCodes.PAYMENTS_PROCESS);
   const requireActiveSession = createRequireActiveSession();
+  const requireSettingsManage = createRequirePermission(PermissionCodes.SETTINGS_MANAGE);
 
   const repository = new OrdersRepository();
   const paymentsRepository = new PaymentsRepository();
@@ -148,10 +150,44 @@ export function createOrdersRouter(env: Env): Router {
     "/:orderId/cancel",
     requireAuth,
     requireActiveSession,
-    requireOrdersDelete,
+    requireOrdersUpdate,
     validateRequest("params", orderIdParams),
     validateRequest("body", cancelOrderBody),
     controller.cancel,
+  );
+
+  router.get(
+    "/:orderId/kitchen/recovery",
+    requireAuth,
+    requireOrdersRead,
+    validateRequest("params", orderIdParams),
+    controller.getKitchenRecovery,
+  );
+
+  router.get(
+    "/:orderId/kitchen/dispatch-audit",
+    requireAuth,
+    requireOrdersRead,
+    validateRequest("params", orderIdParams),
+    controller.getKitchenDispatchAudit,
+  );
+
+  router.post(
+    "/:orderId/kitchen/dispatch-pending",
+    requireAuth,
+    requireOrdersUpdate,
+    validateRequest("params", orderIdParams),
+    validateRequest("body", dispatchPendingKitchenBody),
+    controller.dispatchPendingKitchen,
+  );
+
+  router.post(
+    "/:orderId/kitchen/full-reprint",
+    requireAuth,
+    requireSettingsManage,
+    validateRequest("params", orderIdParams),
+    validateRequest("body", fullKitchenReprintBody),
+    controller.fullKitchenReprint,
   );
 
   router.get(

@@ -23,6 +23,20 @@ export const kitchenLine = z
     modifiers: z.array(z.object({ label: z.string().max(120) })).default([]),
     removedIngredients: z.array(z.string().max(120)).default([]),
     kitchenNotes: z.string().max(2000).nullable().optional(),
+    previousQty: z.coerce.number().int().min(0).max(999).optional(),
+    deltaQty: z.coerce.number().int().min(-999).max(999).optional(),
+    modifiersAdded: z.array(z.string().max(120)).optional(),
+    modifiersRemoved: z.array(z.string().max(120)).optional(),
+    removedIngredientsAdded: z.array(z.string().max(120)).optional(),
+    previousKitchenNotes: z.string().max(2000).nullable().optional(),
+  })
+  .strict();
+
+export const kitchenDeltaSection = z
+  .object({
+    kind: z.enum(["ADDED", "REMOVED", "MODIFIED", "INFO"]),
+    lines: z.array(kitchenLine).max(200),
+    infoText: z.string().max(2000).optional(),
   })
   .strict();
 
@@ -34,13 +48,37 @@ export const kitchenTicketPayload = z
     tableNumber: z.string().max(40).nullable().optional(),
     orderType: z.string().max(40),
     printedAtIso: z.string().min(1).max(80),
-    lines: z.array(kitchenLine).min(1).max(200),
+    lines: z.array(kitchenLine).max(200).optional(),
     orderKitchenNotes: z.string().max(4000).nullable().optional(),
     /** Kitchen routing — optional on wire; required for station-specific tickets at render time. */
     station: z.enum(["PIZZA", "PLATS", "SNACK", "CAFETERIA"]).optional(),
     waiterName: z.string().max(120).optional(),
+    payloadVersion: z.literal(2).optional(),
+    ticketMode: z.enum(["NEW", "UPDATE", "CANCEL", "INFO", "FULL_REPRINT"]).optional(),
+    sections: z.array(kitchenDeltaSection).optional(),
   })
-  .strict();
+  .strict()
+  .superRefine((payload, ctx) => {
+    const isDelta = payload.payloadVersion === 2 && payload.sections && payload.sections.length > 0;
+    if (isDelta) {
+      const lineCount = payload.sections!.reduce((n, s) => n + s.lines.length, 0);
+      if (lineCount < 1) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "Delta kitchen ticket must include at least one section line",
+          path: ["sections"],
+        });
+      }
+      return;
+    }
+    if (!payload.lines || payload.lines.length < 1) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Kitchen ticket must include at least one line",
+        path: ["lines"],
+      });
+    }
+  });
 
 export const customerReceiptLine = z
   .object({
@@ -111,7 +149,7 @@ export const expenseReceiptPayload = z
   })
   .strict();
 
-export const printPayload = z.discriminatedUnion("kind", [
+export const printPayload = z.union([
   tableTicketPayload,
   kitchenTicketPayload,
   customerReceiptPayload,

@@ -1,6 +1,7 @@
 import type { TableStatus } from "@prisma/client";
 
 import { ApiError } from "../../core/http/ApiError.js";
+import { resolveOrderWaiterName } from "../orders/order-waiter-name.js";
 import { getRealtimeHub } from "../../realtime/registry.js";
 import { prisma } from "../../prisma/index.js";
 
@@ -69,7 +70,7 @@ function mapTableDetail(t: TableDetailPayload): TableDetailResponseDto {
           version: co.version,
           openedAt: co.openedAt.toISOString(),
           openedMinutesAgo: openedMinutesSince(co.openedAt),
-          waiterName: co.waiter?.fullName ?? null,
+          waiterName: resolveOrderWaiterName(co),
           items: co.items.map((it) => ({
             id: it.id,
             menuItemId: it.menuItemId,

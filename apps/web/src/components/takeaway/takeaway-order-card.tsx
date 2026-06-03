@@ -28,7 +28,7 @@ export interface TakeawayOrderCardProps {
   nowMs: number;
   onStartPreparing?: () => void;
   onMarkReady?: () => void;
-  onMarkDelivered?: () => void;
+  onEncaisser?: () => void;
   onCancel?: () => void;
 }
 
@@ -37,7 +37,7 @@ export function TakeawayOrderCard({
   nowMs,
   onStartPreparing,
   onMarkReady,
-  onMarkDelivered,
+  onEncaisser,
   onCancel,
 }: TakeawayOrderCardProps) {
   const o = order;
@@ -208,14 +208,14 @@ export function TakeawayOrderCard({
               {fr.takeawayOrderCard.markReady}
             </Button>
           ) : null}
-          {o.status === "READY" && onMarkDelivered ? (
+          {o.status === "READY" && onEncaisser ? (
             <Button
               type="button"
               size="sm"
-              className="h-9 min-h-9 flex-1 rounded-lg bg-gradient-to-r from-sky-600 to-violet-600 text-xs font-semibold text-white shadow-[0_6px_20px_rgba(56,189,248,0.3)] hover:from-sky-500 hover:to-violet-500 sm:flex-none"
-              onClick={onMarkDelivered}
+              className="h-9 min-h-9 flex-1 rounded-lg bg-gradient-to-r from-emerald-600 to-teal-500 text-xs font-semibold text-white shadow-[0_6px_20px_rgba(16,185,129,0.35)] hover:from-emerald-500 hover:to-teal-400 sm:flex-none"
+              onClick={onEncaisser}
             >
-              {fr.takeawayOrderCard.markDelivered}
+              {fr.takeawayOrderCard.encaisser}
             </Button>
           ) : null}
           {onCancel ? (

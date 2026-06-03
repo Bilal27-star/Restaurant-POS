@@ -30,4 +30,6 @@ export type SerializedTakeawayOrder = {
   customer: SerializedOrderCustomer;
   items: SerializedOrderLine[];
   total: string;
+  version?: number;
+  paymentStatus?: string;
 };

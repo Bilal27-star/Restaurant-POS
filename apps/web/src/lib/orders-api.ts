@@ -45,7 +45,7 @@ export function isOrderPrintRoutingValidationError(err: unknown): boolean {
 }
 
 /**
- * Wraps REST order mutations so kitchen-ticket fields (`station`, `waiterName`) never leave the browser.
+ * Wraps REST order mutations so kitchen-ticket routing field (`station`) never leaves the browser.
  * Also dedupes concurrent POST /orders with the same payload key.
  */
 export function wrapOrdersApi(orders: PosApiClient["orders"]): PosApiClient["orders"] {

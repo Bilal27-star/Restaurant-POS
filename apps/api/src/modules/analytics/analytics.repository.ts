@@ -21,6 +21,16 @@ function escapeTzLiteral(tz: string): string {
   return tz.replace(/'/g, "''");
 }
 
+/** Completed, fully paid orders — same basis as encaissed / daily revenue reporting. */
+function paidCompletedOrderWhere(restaurantId: string, from: Date, to: Date) {
+  return {
+    restaurantId,
+    status: "COMPLETED" as const,
+    paymentStatus: "PAID" as const,
+    closedAt: { gte: from, lte: to },
+  };
+}
+
 export class AnalyticsRepository {
   /** Legacy overview (range in UTC from caller). */
   async overview(restaurantId: string, from: Date, to: Date): Promise<AnalyticsOverview> {
@@ -38,9 +48,10 @@ export class AnalyticsRepository {
       JOIN menu_items mi ON oi.menu_item_id = mi.id
       JOIN menu_categories mc ON mi.category_id = mc.id
       WHERE o.restaurant_id = $1::uuid
-        AND o.opened_at >= $2::timestamptz
-        AND o.opened_at <= $3::timestamptz
-        AND o.status <> 'CANCELLED'
+        AND o.status = 'COMPLETED'
+        AND o.payment_status = 'PAID'
+        AND o.closed_at >= $2::timestamptz
+        AND o.closed_at <= $3::timestamptz
       GROUP BY mc.name
       ORDER BY SUM(oi.line_subtotal) DESC NULLS LAST
       LIMIT 8`;
@@ -80,7 +91,7 @@ export class AnalyticsRepository {
       prisma.orderItem.groupBy({
         by: ["menuItemId", "nameSnapshot"],
         where: {
-          order: orderWhere,
+          order: paidCompletedOrderWhere(restaurantId, from, to),
           menuItemId: { not: null },
         },
         _sum: { quantity: true, lineSubtotal: true },
@@ -287,8 +298,9 @@ export class AnalyticsRepository {
           menuItemId: { not: null },
           order: {
             restaurantId,
-            status: { not: "CANCELLED" },
-            openedAt: { gte: startUtc, lt: endUtc },
+            status: "COMPLETED",
+            paymentStatus: "PAID",
+            closedAt: { gte: startUtc, lt: endUtc },
           },
         },
         _sum: { quantity: true, lineSubtotal: true },
@@ -480,15 +492,10 @@ export class AnalyticsRepository {
   }
 
   async getTopItems(restaurantId: string, from: Date, to: Date, limit: number): Promise<AnalyticsTopItemsResponse> {
-    const orderWhere = {
-      restaurantId,
-      openedAt: { gte: from, lte: to },
-      status: { not: "CANCELLED" as const },
-    };
     const topGroups = await prisma.orderItem.groupBy({
       by: ["menuItemId", "nameSnapshot"],
       where: {
-        order: orderWhere,
+        order: paidCompletedOrderWhere(restaurantId, from, to),
         menuItemId: { not: null },
       },
       _sum: { quantity: true, lineSubtotal: true },

@@ -1,9 +1,14 @@
 import { randomInt } from "node:crypto";
 
-import type { OrderStatus, OrderType, Prisma } from "@prisma/client";
+import type { OrderItemKitchenStatus, OrderLineMutationKind, OrderStatus, OrderType, Prisma } from "@prisma/client";
 
 import { money, moneyAdd, moneyMulInt, moneyZero } from "../../core/orders/money.js";
 import { prisma } from "../../prisma/index.js";
+import {
+  kitchenLineSelect,
+  mapOrderItemToKitchenDetectLine,
+  type KitchenOrderItemRow,
+} from "../kitchen-delta/kitchen-delta.repository.js";
 
 /** Shared include for hydrated order payloads (payments, orders, receipts). */
 export const orderDetailInclude = {
@@ -21,6 +26,14 @@ export const orderDetailInclude = {
 } satisfies Prisma.OrderInclude;
 
 export type OrderWithRelations = Prisma.OrderGetPayload<{ include: typeof orderDetailInclude }>;
+
+export type OrderMutationApplyResult = {
+  order: OrderWithRelations;
+  /** False when an offline replay reused `clientMutationId` without re-applying the mutation. */
+  applied: boolean;
+  /** Populated on successful LINE_ADD for kitchen delta detection. */
+  addedLineIds?: string[];
+};
 
 export type Tx = Prisma.TransactionClient;
 
@@ -59,6 +72,52 @@ export class OrdersRepository {
       select: { name: true },
     });
     return r?.name ?? "Restaurant";
+  }
+
+  private async findLineMutationReplay(
+    tx: Tx,
+    input: {
+      restaurantId: string;
+      orderId: string;
+      clientMutationId: string | null | undefined;
+    },
+  ): Promise<OrderWithRelations | null> {
+    const key = input.clientMutationId?.trim();
+    if (!key) return null;
+
+    const rec = await tx.orderLineMutationIdempotency.findUnique({
+      where: {
+        restaurantId_clientMutationId: {
+          restaurantId: input.restaurantId,
+          clientMutationId: key,
+        },
+      },
+      select: { orderId: true },
+    });
+    if (!rec) return null;
+    if (rec.orderId !== input.orderId) {
+      throw new Error("MUTATION_ID_CONFLICT");
+    }
+    return this.getOrderByIdOrThrow(tx, input.restaurantId, rec.orderId);
+  }
+
+  private async recordLineMutation(
+    tx: Tx,
+    input: {
+      restaurantId: string;
+      orderId: string;
+      clientMutationId: string;
+      kind: OrderLineMutationKind;
+    },
+  ): Promise<void> {
+    await tx.orderLineMutationIdempotency.create({
+      data: {
+        restaurantId: input.restaurantId,
+        orderId: input.orderId,
+        clientMutationId: input.clientMutationId,
+        kind: input.kind,
+      },
+    });
   }
 
   async allocateOrderNumber(tx: Tx, restaurantId: string): Promise<string> {
@@ -259,6 +318,7 @@ export class OrdersRepository {
     tableId: string | null;
     customerId: string | null;
     waiterId: string | null;
+    waiterName?: string | null;
     createdByUserId: string | null;
     partySize: number | null;
     kitchenNotes: string | null;
@@ -337,6 +397,7 @@ export class OrdersRepository {
           tableId: input.tableId,
           customerId: input.customerId,
           waiterId: input.waiterId,
+          waiterName: input.waiterName?.trim() || null,
           partySize: input.partySize,
           createdByUserId: input.createdByUserId,
           kitchenNotes: input.kitchenNotes ?? "",
@@ -480,6 +541,7 @@ export class OrdersRepository {
       status?: OrderStatus;
       customerId?: string | null;
       waiterId?: string | null;
+      waiterName?: string | null;
       partySize?: number | null;
       taxTotal?: Prisma.Decimal | null;
       discountTotal?: Prisma.Decimal | null;
@@ -525,6 +587,9 @@ export class OrdersRepository {
           ...(input.patch.status ? { status: input.patch.status } : {}),
           ...(input.patch.customerId !== undefined ? { customerId: input.patch.customerId } : {}),
           ...(input.patch.waiterId !== undefined ? { waiterId: input.patch.waiterId } : {}),
+          ...(input.patch.waiterName !== undefined
+            ? { waiterName: input.patch.waiterName?.trim() || null }
+            : {}),
           ...(input.patch.partySize !== undefined ? { partySize: input.patch.partySize } : {}),
           ...(input.patch.taxTotal !== undefined && input.patch.taxTotal !== null ? { taxTotal: input.patch.taxTotal } : {}),
           ...(input.patch.discountTotal !== undefined && input.patch.discountTotal !== null
@@ -546,6 +611,7 @@ export class OrdersRepository {
     restaurantId: string;
     orderId: string;
     expectedVersion: number | undefined;
+    clientMutationId?: string | null;
     lines: {
       menuItemId: string;
       quantity: number;
@@ -553,8 +619,17 @@ export class OrdersRepository {
       removedIngredientIds: string[];
       kitchenNotes: string | null;
     }[];
-  }): Promise<OrderWithRelations> {
+  }): Promise<OrderMutationApplyResult> {
     return prisma.$transaction(async (tx) => {
+      const replay = await this.findLineMutationReplay(tx, {
+        restaurantId: input.restaurantId,
+        orderId: input.orderId,
+        clientMutationId: input.clientMutationId,
+      });
+      if (replay) {
+        return { order: replay, applied: false };
+      }
+
       const head = await this.findOrderHead(tx, input.restaurantId, input.orderId);
       if (!head) {
         throw new Error("ORDER_NOT_FOUND");
@@ -574,6 +649,7 @@ export class OrdersRepository {
         _max: { sortOrder: true },
       });
       let sortBase = (maxSort._max.sortOrder ?? -1) + 1;
+      const addedLineIds: string[] = [];
 
       for (const line of input.lines) {
         const catalog = await this.getMenuItemForLine(tx, line.menuItemId, input.restaurantId);
@@ -589,7 +665,7 @@ export class OrdersRepository {
         const perUnit = moneyAdd(unitPrice, perUnitMods);
         const lineSubtotal = moneyMulInt(perUnit, line.quantity);
 
-        await tx.orderItem.create({
+        const created = await tx.orderItem.create({
           data: {
             orderId: input.orderId,
             menuItemId: catalog.id,
@@ -603,10 +679,23 @@ export class OrdersRepository {
             modifiers: { create: modifierRows },
           },
         });
+        addedLineIds.push(created.id);
       }
 
       await this.recalculateOrderTotals(tx, input.orderId);
-      return this.getOrderByIdOrThrow(tx, input.restaurantId, input.orderId);
+
+      const mutationKey = input.clientMutationId?.trim();
+      if (mutationKey) {
+        await this.recordLineMutation(tx, {
+          restaurantId: input.restaurantId,
+          orderId: input.orderId,
+          clientMutationId: mutationKey,
+          kind: "LINE_ADD",
+        });
+      }
+
+      const order = await this.getOrderByIdOrThrow(tx, input.restaurantId, input.orderId);
+      return { order, applied: true, addedLineIds };
     });
   }
 
@@ -615,14 +704,24 @@ export class OrdersRepository {
     orderId: string;
     lineId: string;
     expectedVersion: number | undefined;
+    clientMutationId?: string | null;
     patch: {
       quantity?: number;
       modifierIds?: string[];
       removedIngredientIds?: string[];
       kitchenNotes?: string | null;
     };
-  }): Promise<OrderWithRelations> {
+  }): Promise<OrderMutationApplyResult> {
     return prisma.$transaction(async (tx) => {
+      const replay = await this.findLineMutationReplay(tx, {
+        restaurantId: input.restaurantId,
+        orderId: input.orderId,
+        clientMutationId: input.clientMutationId,
+      });
+      if (replay) {
+        return { order: replay, applied: false };
+      }
+
       const head = await this.findOrderHead(tx, input.restaurantId, input.orderId);
       if (!head) {
         throw new Error("ORDER_NOT_FOUND");
@@ -639,7 +738,25 @@ export class OrdersRepository {
 
       const line = await tx.orderItem.findFirst({
         where: { id: input.lineId, orderId: input.orderId },
-        include: { modifiers: true },
+        select: {
+          id: true,
+          menuItemId: true,
+          nameSnapshot: true,
+          quantity: true,
+          kitchenNotes: true,
+          removedIngredients: true,
+          kitchenStatus: true,
+          kitchenStation: true,
+          kitchenLastSentSnapshot: true,
+          kitchenSnapshotHash: true,
+          modifiers: { select: { modifierId: true, label: true } },
+          menuItem: {
+            select: {
+              kitchenStation: true,
+              category: { select: { name: true } },
+            },
+          },
+        },
       });
       if (!line || !line.menuItemId) {
         throw new Error("LINE_NOT_FOUND");
@@ -694,12 +811,55 @@ export class OrdersRepository {
       });
 
       await this.recalculateOrderTotals(tx, input.orderId);
-      return this.getOrderByIdOrThrow(tx, input.restaurantId, input.orderId);
+
+      const mutationKey = input.clientMutationId?.trim();
+      if (mutationKey) {
+        await this.recordLineMutation(tx, {
+          restaurantId: input.restaurantId,
+          orderId: input.orderId,
+          clientMutationId: mutationKey,
+          kind: "LINE_UPDATE",
+        });
+      }
+
+      const kitchenFieldPatch =
+        input.patch.kitchenNotes !== undefined ||
+        input.patch.quantity !== undefined ||
+        input.patch.modifierIds !== undefined ||
+        input.patch.removedIngredientIds !== undefined;
+
+      if (
+        kitchenFieldPatch &&
+        (line.kitchenStatus === "SENT" || line.kitchenStatus === "MODIFIED")
+      ) {
+        await tx.orderItem.updateMany({
+          where: { id: line.id },
+          data: { kitchenStatus: "MODIFIED", kitchenRevision: { increment: 1 } },
+        });
+      }
+
+      const order = await this.getOrderByIdOrThrow(tx, input.restaurantId, input.orderId);
+      return { order, applied: true };
     });
   }
 
-  async deleteLine(input: { restaurantId: string; orderId: string; lineId: string; expectedVersion?: number }) {
+  async deleteLine(input: {
+    restaurantId: string;
+    orderId: string;
+    lineId: string;
+    expectedVersion?: number;
+    clientMutationId?: string | null;
+  }): Promise<OrderMutationApplyResult> {
     return prisma.$transaction(async (tx) => {
+      const replay = await this.findLineMutationReplay(tx, {
+        restaurantId: input.restaurantId,
+        orderId: input.orderId,
+        clientMutationId: input.clientMutationId,
+      });
+      if (replay) {
+        return { order: replay, applied: false };
+      }
+
       const head = await this.findOrderHead(tx, input.restaurantId, input.orderId);
       if (!head) {
         throw new Error("ORDER_NOT_FOUND");
@@ -714,11 +874,28 @@ export class OrdersRepository {
         throw new Error("VERSION_CONFLICT");
       }
 
-      const line = await tx.orderItem.findFirst({
+      const lineRow: KitchenOrderItemRow | null = await tx.orderItem.findFirst({
         where: { id: input.lineId, orderId: input.orderId },
+        select: kitchenLineSelect,
       });
-      if (!line) {
+      if (!lineRow) {
         throw new Error("LINE_NOT_FOUND");
+      }
+
+      const mutationKey = input.clientMutationId?.trim();
+      const preKitchenStatus = lineRow.kitchenStatus as OrderItemKitchenStatus;
+      if (!mutationKey && (preKitchenStatus === "SENT" || preKitchenStatus === "MODIFIED")) {
+        const detectLine = mapOrderItemToKitchenDetectLine(lineRow);
+        await tx.orderItemKitchenAudit.create({
+          data: {
+            restaurantId: input.restaurantId,
+            orderId: input.orderId,
+            orderItemId: lineRow.id,
+            event: "REMOVED",
+            snapshotJson: { detectLine } as Prisma.InputJsonValue,
+            intentId: null,
+          },
+        });
       }
 
       await tx.orderItem.delete({ where: { id: input.lineId } });
@@ -729,7 +906,18 @@ export class OrdersRepository {
       }
 
       await this.recalculateOrderTotals(tx, input.orderId);
-      return this.getOrderByIdOrThrow(tx, input.restaurantId, input.orderId);
+
+      if (mutationKey) {
+        await this.recordLineMutation(tx, {
+          restaurantId: input.restaurantId,
+          orderId: input.orderId,
+          clientMutationId: mutationKey,
+          kind: "LINE_DELETE",
+        });
+      }
+
+      const order = await this.getOrderByIdOrThrow(tx, input.restaurantId, input.orderId);
+      return { order, applied: true };
     });
   }
 

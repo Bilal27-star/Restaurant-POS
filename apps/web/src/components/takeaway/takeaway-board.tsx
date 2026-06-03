@@ -20,7 +20,7 @@ export interface TakeawayBoardProps {
   columnDelivered: TakeawayOrder[];
   onStartPreparing: (id: string) => void;
   onMarkReady: (id: string) => void;
-  onMarkDelivered: (id: string) => void;
+  onEncaisser: (id: string) => void;
   onRequestCancel: (id: string) => void;
 }
 
@@ -51,10 +51,10 @@ function ColumnShell({
         : "from-sky-500/15 to-violet-500/10 text-sky-100 border-sky-400/25";
 
   return (
-    <section className="flex min-h-0 min-w-[min(100%,18rem)] flex-1 flex-col rounded-2xl border border-white/[0.06] bg-purple-950/15 p-3 backdrop-blur-md sm:min-w-[20rem] lg:min-w-0">
+    <section className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-white/[0.06] bg-purple-950/15 p-3 backdrop-blur-md min-w-[min(100%,18rem)] sm:min-w-[20rem] lg:min-w-0">
       <header
         className={cn(
-          "flex items-center justify-between gap-2 rounded-xl border bg-gradient-to-r px-3 py-2.5",
+          "flex shrink-0 items-center justify-between gap-2 rounded-xl border bg-gradient-to-r px-3 py-2.5",
           head,
         )}
       >
@@ -67,9 +67,9 @@ function ColumnShell({
         </div>
         <span className="shrink-0 rounded-md bg-black/30 px-2 py-0.5 text-xs font-bold tabular-nums">{count}</span>
       </header>
-      <div className="mt-3 flex min-h-[12rem] flex-1 flex-col gap-3 overflow-y-auto pr-0.5">
+      <div className="takeaway-column-scroll scrollbar-pos-modal mt-3 flex flex-col gap-3 pr-0.5">
         {contentCount === 0 ? (
-          <div className="flex flex-1 flex-col items-center justify-center rounded-xl border border-dashed border-white/[0.08] py-10 text-center text-sm font-medium text-on-dark-secondary">
+          <div className="flex min-h-[8rem] flex-col items-center justify-center rounded-xl border border-dashed border-white/[0.08] py-10 text-center text-sm font-medium text-on-dark-secondary">
             {emptyMessage}
           </div>
         ) : (
@@ -93,7 +93,7 @@ export function TakeawayBoard({
   columnDelivered,
   onStartPreparing,
   onMarkReady,
-  onMarkDelivered,
+  onEncaisser,
   onRequestCancel,
 }: TakeawayBoardProps) {
   const filters: { key: TakeawayStatusFilter; label: string }[] = [
@@ -111,7 +111,7 @@ export function TakeawayBoard({
       nowMs={nowMs}
       onStartPreparing={o.status === "PENDING" ? () => onStartPreparing(o.id) : undefined}
       onMarkReady={o.status === "PREPARING" ? () => onMarkReady(o.id) : undefined}
-      onMarkDelivered={o.status === "READY" ? () => onMarkDelivered(o.id) : undefined}
+      onEncaisser={o.status === "READY" ? () => onEncaisser(o.id) : undefined}
       onCancel={() => onRequestCancel(o.id)}
     />
   );
@@ -120,8 +120,8 @@ export function TakeawayBoard({
   const pendingContentCount = pendingCount;
 
   return (
-    <div className="surface-dark-ink flex min-h-0 flex-1 flex-col gap-5">
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+    <div className="surface-dark-ink flex min-h-0 flex-1 flex-col gap-5 overflow-hidden">
+      <div className="grid shrink-0 grid-cols-1 gap-3 sm:grid-cols-3">
         <div className="flex items-center gap-3 rounded-2xl border border-orange-400/25 bg-gradient-to-br from-orange-500/15 to-zinc-900/50 p-4 shadow-[0_0_32px_rgba(251,146,60,0.12)] backdrop-blur-md">
           <div className="flex size-12 items-center justify-center rounded-xl bg-orange-500/25 text-orange-200">
             <Clock className="size-6" aria-hidden />
@@ -151,7 +151,7 @@ export function TakeawayBoard({
         </div>
       </div>
 
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+      <div className="flex shrink-0 flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
         <div className="relative min-w-0 flex-1 lg:max-w-md">
           <Input
             value={query}
@@ -182,8 +182,8 @@ export function TakeawayBoard({
         </div>
       </div>
 
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-4 overflow-x-auto pb-2 lg:flex-row lg:overflow-x-visible">
-        <div className="flex min-w-0 flex-[1.15] flex-col lg:min-w-0">
+      <div className="grid min-h-0 min-w-0 flex-1 grid-cols-1 gap-4 overflow-hidden pb-2 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)_minmax(0,1fr)] lg:grid-rows-[minmax(0,1fr)]">
+        <div className="flex min-h-0 flex-col overflow-hidden lg:min-h-0">
           <ColumnShell
             title={fr.takeawayBoard.colQueueTitle}
             subtitle={fr.takeawayBoard.colQueueSubtitle}
@@ -210,7 +210,7 @@ export function TakeawayBoard({
           </ColumnShell>
         </div>
 
-        <div className="flex min-w-0 flex-1 flex-col lg:min-w-0">
+        <div className="flex min-h-0 flex-col overflow-hidden lg:min-h-0">
           <ColumnShell
             title={fr.takeawayBoard.colReadyTitle}
             count={columnReady.length}
@@ -219,11 +219,11 @@ export function TakeawayBoard({
             emptyMessage={fr.takeawayBoard.emptyReady}
             contentCount={columnReady.length}
           >
-            <>{columnReady.map(renderCard)}</>
+            <div className="flex flex-col gap-3">{columnReady.map(renderCard)}</div>
           </ColumnShell>
         </div>
 
-        <div className="flex min-w-0 flex-1 flex-col lg:min-w-0">
+        <div className="flex min-h-0 flex-col overflow-hidden lg:min-h-0">
           <ColumnShell
             title={fr.takeawayBoard.colDeliveredTitle}
             subtitle={fr.takeawayBoard.colDeliveredSubtitle}
@@ -233,7 +233,7 @@ export function TakeawayBoard({
             emptyMessage={fr.takeawayBoard.emptyDelivered}
             contentCount={columnDelivered.length}
           >
-            <>{columnDelivered.map(renderCard)}</>
+            <div className="flex flex-col gap-3">{columnDelivered.map(renderCard)}</div>
           </ColumnShell>
         </div>
       </div>

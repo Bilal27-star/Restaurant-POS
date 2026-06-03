@@ -23,8 +23,10 @@ export type PosCartLine = {
   /** When hydrating from server snapshot (names only) */
   removedIngredientLabels?: string[];
   notes: string;
-  /** New lines created on POS; false = loaded from an active server order (read-only in UI). */
+  /** New lines created on POS; false = loaded from an active server order. */
   isDraftLine: boolean;
+  /** Server kitchen line state (hydrated orders). */
+  kitchenStatus: string;
 };
 
 function newLineId(): string {
@@ -52,9 +54,20 @@ export type PosOrderHydrateItem = {
   quantity: number;
   unitPrice: string;
   kitchenNotes?: string | null;
+  kitchenStatus?: string;
   removedIngredients?: unknown;
   modifiers?: { modifierId: string | null; label: string; priceDelta: string }[];
 };
+
+/** True when the order has unsent kitchen deltas (ADD drafts, UPDATE lines, or pending deletes). */
+export function orderHasPendingKitchenSend(
+  lines: Pick<PosCartLine, "isDraftLine" | "kitchenStatus">[],
+  pendingKitchenRemovalCount: number,
+): boolean {
+  if (lines.some((l) => l.isDraftLine)) return true;
+  if (pendingKitchenRemovalCount > 0) return true;
+  return lines.some((l) => !l.isDraftLine && l.kitchenStatus === "MODIFIED");
+}
 
 function hydrateItemsToLines(items: PosOrderHydrateItem[]): PosCartLine[] {
   const lines: PosCartLine[] = [];
@@ -95,6 +108,8 @@ function hydrateItemsToLines(items: PosOrderHydrateItem[]): PosCartLine[] {
       removedIngredientLabels,
       notes: (it.kitchenNotes ?? "").trim(),
       isDraftLine: false,
+      kitchenStatus:
+        typeof it.kitchenStatus === "string" && it.kitchenStatus.trim() ? it.kitchenStatus.trim() : "PENDING",
     });
     lines.push(line);
   }
@@ -127,6 +142,7 @@ function parseOrderDetailForHydrate(raw: unknown): {
     const quantity = typeof r.quantity === "number" ? r.quantity : Number(r.quantity);
     const unitPrice = typeof r.unitPrice === "string" ? r.unitPrice : "0";
     const kitchenNotes = r.kitchenNotes;
+    const kitchenStatus = r.kitchenStatus;
     if (!lid || !menuItemId || !nameSnapshot || !Number.isFinite(quantity) || quantity < 1) continue;
     items.push({
       id: lid,
@@ -135,6 +151,7 @@ function parseOrderDetailForHydrate(raw: unknown): {
       quantity,
       unitPrice,
       kitchenNotes: typeof kitchenNotes === "string" || kitchenNotes === null ? (kitchenNotes as string | null) : null,
+      kitchenStatus: typeof kitchenStatus === "string" ? kitchenStatus : undefined,
       removedIngredients: r.removedIngredients,
       modifiers: Array.isArray(r.modifiers)
         ? (r.modifiers as Record<string, unknown>[]).map((m) => ({
@@ -146,6 +163,27 @@ function parseOrderDetailForHydrate(raw: unknown): {
     });
   }
   return { orderId: id, version: safeVersion, items };
+}
+
+/** Read optimistic-concurrency `version` from an order detail API payload. */
+export function extractOrderVersionFromDetail(raw: unknown): number | null {
+  const parsed = parseOrderDetailForHydrate(raw);
+  return parsed?.version ?? null;
+}
+
+function normalizePersistedWaiterName(raw: unknown): string {
+  return typeof raw === "string" && raw.trim() ? raw.trim() : "";
+}
+
+/** Whether line qty/delete mutations are allowed (paid / closed / cancelled orders are locked). */
+export function parseOrderLinesEditable(raw: unknown): boolean {
+  if (!raw || typeof raw !== "object") return true;
+  const o = raw as Record<string, unknown>;
+  if (o.closedAt != null) return false;
+  const status = o.status;
+  if (status === "COMPLETED" || status === "CANCELLED") return false;
+  if (o.paymentStatus === "PAID") return false;
+  return true;
 }
 
 export type PosCartLineDraft = Pick<
@@ -165,9 +203,18 @@ export type PosOrderStoreState = {
   tableLabel: string | null;
   activeOrderId: string | null;
   activeOrderVersion: number | null;
+  waiterName: string;
+  /** Last waiter name persisted on the server (used to skip redundant meta patches). */
+  persistedWaiterName: string;
+  /** False when the active order is paid, closed, or cancelled. */
+  orderLinesEditable: boolean;
+  /** Deleted sent lines awaiting kitchen CANCEL dispatch. */
+  pendingKitchenRemovalCount: number;
   lines: PosCartLine[];
   setTableContext: (p: { tableId: string | null; tableLabel: string | null }) => void;
   setActiveOrder: (orderId: string | null, version: number | null) => void;
+  setWaiterName: (name: string) => void;
+  incrementPendingKitchenRemoval: () => void;
   clearSession: () => void;
   hydrateFromOrderDetail: (orderJson: unknown) => void;
   addLine: (line: PosCartLineDraft) => void;
@@ -184,12 +231,24 @@ export type PosOrderStoreState = {
 
 const initial: Pick<
   PosOrderStoreState,
-  "tableId" | "tableLabel" | "activeOrderId" | "activeOrderVersion" | "lines"
+  | "tableId"
+  | "tableLabel"
+  | "activeOrderId"
+  | "activeOrderVersion"
+  | "waiterName"
+  | "persistedWaiterName"
+  | "orderLinesEditable"
+  | "pendingKitchenRemovalCount"
+  | "lines"
 > = {
   tableId: null,
   tableLabel: null,
   activeOrderId: null,
   activeOrderVersion: null,
+  waiterName: "",
+  persistedWaiterName: "",
+  orderLinesEditable: true,
+  pendingKitchenRemovalCount: 0,
   lines: [],
 };
 
@@ -200,15 +259,29 @@ export const usePosOrderStore = create<PosOrderStoreState>((set, get) => ({
 
   setActiveOrder: (orderId, version) => set({ activeOrderId: orderId, activeOrderVersion: version }),
 
+  setWaiterName: (name) => set({ waiterName: name }),
+
+  incrementPendingKitchenRemoval: () =>
+    set((s) => ({ pendingKitchenRemovalCount: s.pendingKitchenRemovalCount + 1 })),
+
   clearSession: () => set({ ...initial }),
 
   hydrateFromOrderDetail: (orderJson) => {
     const parsed = parseOrderDetailForHydrate(orderJson);
     if (!parsed) return;
+    const raw = orderJson as Record<string, unknown>;
+    const waiterName = normalizePersistedWaiterName(raw.waiterName);
+    const prev = get();
+    const pendingKitchenRemovalCount =
+      prev.activeOrderId === parsed.orderId ? prev.pendingKitchenRemovalCount : 0;
     set({
       activeOrderId: parsed.orderId,
       activeOrderVersion: parsed.version,
       lines: hydrateItemsToLines(parsed.items),
+      waiterName,
+      persistedWaiterName: waiterName,
+      orderLinesEditable: parseOrderLinesEditable(orderJson),
+      pendingKitchenRemovalCount,
     });
   },
 
@@ -228,6 +301,7 @@ export const usePosOrderStore = create<PosOrderStoreState>((set, get) => ({
       removedIngredientLabels: line.removedIngredientLabels,
       notes: line.notes,
       isDraftLine: line.isDraftLine ?? true,
+      kitchenStatus: "PENDING",
     };
     const withId = recalcLine({ ...draft, id: newLineId() });
     set((s) => ({ lines: [...s.lines, withId] }));
@@ -235,14 +309,14 @@ export const usePosOrderStore = create<PosOrderStoreState>((set, get) => ({
 
   removeLine: (lineId) =>
     set((s) => ({
-      lines: s.lines.filter((l) => !(l.id === lineId && l.isDraftLine)),
+      lines: s.lines.filter((l) => l.id !== lineId),
     })),
 
   changeQty: (lineId, quantity) => {
     const q = Math.max(1, Math.min(999, Math.floor(quantity)));
     set((s) => ({
       lines: s.lines.map((l) => {
-        if (l.id !== lineId || !l.isDraftLine) return l;
+        if (l.id !== lineId) return l;
         return recalcLine({ ...l, quantity: q });
       }),
     }));
@@ -260,7 +334,9 @@ export const usePosOrderStore = create<PosOrderStoreState>((set, get) => ({
 
   setLineNotes: (lineId, notes) =>
     set((s) => ({
-      lines: s.lines.map((l) => (l.id === lineId && l.isDraftLine ? { ...l, notes } : l)),
+      lines: s.lines.map((l) =>
+        l.id === lineId && (l.isDraftLine || s.orderLinesEditable) ? { ...l, notes } : l,
+      ),
     })),
 
   addModifierQuantity: (lineId, modifierId, label, priceEachDa, delta) => {

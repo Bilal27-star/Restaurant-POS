@@ -20,7 +20,24 @@ export type KitchenTicketLine = {
   modifiers: { label: string }[];
   removedIngredients: string[];
   kitchenNotes?: string | null;
+  /** Delta payload (payloadVersion 2). */
+  previousQty?: number;
+  deltaQty?: number;
+  modifiersAdded?: string[];
+  modifiersRemoved?: string[];
+  removedIngredientsAdded?: string[];
+  previousKitchenNotes?: string | null;
 };
+
+export type KitchenTicketSectionKind = "ADDED" | "REMOVED" | "MODIFIED" | "INFO";
+
+export type KitchenTicketSection = {
+  kind: KitchenTicketSectionKind;
+  lines: KitchenTicketLine[];
+  infoText?: string;
+};
+
+export type KitchenTicketMode = "NEW" | "UPDATE" | "CANCEL" | "INFO" | "FULL_REPRINT";
 
 export type KitchenTicketDocument = {
   kind: "KITCHEN_TICKET";
@@ -32,6 +49,11 @@ export type KitchenTicketDocument = {
   lines: KitchenTicketLine[];
   orderKitchenNotes?: string | null;
   station?: string;
+  waiterName?: string;
+  /** Delta kitchen tickets (payloadVersion 2). */
+  payloadVersion?: number;
+  ticketMode?: KitchenTicketMode;
+  sections?: KitchenTicketSection[];
 };
 
 export type CustomerReceiptLine = {

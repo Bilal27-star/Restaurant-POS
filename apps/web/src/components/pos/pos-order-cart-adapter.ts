@@ -2,7 +2,11 @@ import type { PosCartLine } from "@/stores/pos-order-store";
 
 import type { PosCartExtraLine, PosCartIngredientLine, PosCartLineItem } from "./pos-cart-types";
 
-export function posCartLineToPanelItem(line: PosCartLine): PosCartLineItem {
+export function posCartLineToPanelItem(
+  line: PosCartLine,
+  options?: { orderLinesEditable?: boolean },
+): PosCartLineItem {
+  const orderLinesEditable = options?.orderLinesEditable !== false;
   const extras: PosCartExtraLine[] = line.modifierSelections.map((m) => ({
     id: m.modifierId,
     label: m.quantity > 1 ? `${m.label} ×${m.quantity}` : m.label,
@@ -26,7 +30,8 @@ export function posCartLineToPanelItem(line: PosCartLine): PosCartLineItem {
     id: line.id,
     productId: line.menuItemId,
     name: line.name,
-    readOnly: !line.isDraftLine,
+    readOnly: !orderLinesEditable,
+    notesEditable: orderLinesEditable,
     quantity: line.quantity,
     baseUnitPriceDa: line.baseUnitPriceDa,
     extrasUnitTotalDa: line.extrasUnitTotalDa,
@@ -53,6 +58,7 @@ export type OrderCreateBody = {
   customerId?: string | null;
   waiterId?: string | null;
   partySize?: number | null;
+  waiterName?: string | null;
   kitchenNotes?: string | null;
   customerNotes?: string | null;
   clientMutationId?: string | null;
@@ -86,6 +92,7 @@ export function buildOrderCreateBody(input: OrderCreateBody): OrderCreateBody {
     ...(input.tableId !== undefined ? { tableId: input.tableId } : {}),
     ...(input.customerId !== undefined ? { customerId: input.customerId } : {}),
     ...(input.waiterId !== undefined ? { waiterId: input.waiterId } : {}),
+    ...(input.waiterName !== undefined ? { waiterName: input.waiterName?.trim() || null } : {}),
     ...(input.partySize !== undefined ? { partySize: input.partySize } : {}),
     ...(input.kitchenNotes !== undefined ? { kitchenNotes: input.kitchenNotes } : {}),
     ...(input.customerNotes !== undefined ? { customerNotes: input.customerNotes } : {}),
@@ -102,8 +109,8 @@ export function buildOrderCreateBody(input: OrderCreateBody): OrderCreateBody {
   };
 }
 
-/** Kitchen-ticket / print metadata — must never be sent on REST order mutations. */
-const ORDER_PRINT_ROUTING_KEYS = ["station", "waiterName"] as const;
+/** Kitchen-ticket print metadata — must never be sent on REST order mutations. */
+const ORDER_PRINT_ROUTING_KEYS = ["station"] as const;
 
 function omitOrderPrintRoutingFields(raw: Record<string, unknown>): Record<string, unknown> {
   const out = { ...raw };
@@ -120,6 +127,7 @@ export type OrderPatchBody = {
   status?: "PENDING" | "PREPARING" | "READY" | "COMPLETED" | "CANCELLED";
   customerId?: string | null;
   waiterId?: string | null;
+  waiterName?: string | null;
   partySize?: number | null;
   taxTotal?: string | null;
   discountTotal?: string | null;
@@ -133,6 +141,7 @@ export function buildOrderPatchBody(input: OrderPatchBody): OrderPatchBody {
   if (input.status !== undefined) body.status = input.status;
   if (input.customerId !== undefined) body.customerId = input.customerId;
   if (input.waiterId !== undefined) body.waiterId = input.waiterId;
+  if (input.waiterName !== undefined) body.waiterName = input.waiterName?.trim() || null;
   if (input.partySize !== undefined) body.partySize = input.partySize;
   if (input.taxTotal !== undefined) body.taxTotal = input.taxTotal;
   if (input.discountTotal !== undefined) body.discountTotal = input.discountTotal;
@@ -159,6 +168,10 @@ export function sanitizeOrderPatchPayload(raw: Record<string, unknown>): OrderPa
   }
   if ("customerId" in cleaned) body.customerId = cleaned.customerId as string | null;
   if ("waiterId" in cleaned) body.waiterId = cleaned.waiterId as string | null;
+  if ("waiterName" in cleaned) {
+    const wn = cleaned.waiterName;
+    body.waiterName = typeof wn === "string" || wn === null ? (wn as string | null)?.trim() || null : null;
+  }
   if ("partySize" in cleaned) {
     const ps = cleaned.partySize;
     body.partySize =
@@ -184,6 +197,7 @@ export function sanitizeOrderPatchPayload(raw: Record<string, unknown>): OrderPa
 export type AddOrderLinesBody = {
   lines: OrderCreateLineBody[];
   version?: number;
+  clientMutationId?: string | null;
 };
 
 export function buildAddOrderLinesBody(input: AddOrderLinesBody): AddOrderLinesBody {
@@ -196,6 +210,7 @@ export function buildAddOrderLinesBody(input: AddOrderLinesBody): AddOrderLinesB
       kitchenNotes: l.kitchenNotes ?? null,
     })),
     ...(input.version !== undefined ? { version: input.version } : {}),
+    ...(input.clientMutationId !== undefined ? { clientMutationId: input.clientMutationId } : {}),
   };
 }
 
@@ -206,7 +221,20 @@ export type OrderLinePatchBody = {
   removedIngredientIds?: string[];
   kitchenNotes?: string | null;
   version?: number;
+  clientMutationId?: string | null;
 };
+
+/** Matches `POST /api/v1/orders/:id/kitchen/dispatch-pending` body. */
+export type DispatchPendingKitchenBody = {
+  clientMutationId: string;
+  version?: number;
+};
+
+export function buildDispatchPendingKitchenBody(input: DispatchPendingKitchenBody): DispatchPendingKitchenBody {
+  const body: DispatchPendingKitchenBody = { clientMutationId: input.clientMutationId };
+  if (input.version !== undefined) body.version = input.version;
+  return body;
+}
 
 export function buildOrderLinePatchBody(input: OrderLinePatchBody): OrderLinePatchBody {
   const body: OrderLinePatchBody = {};
@@ -215,6 +243,7 @@ export function buildOrderLinePatchBody(input: OrderLinePatchBody): OrderLinePat
   if (input.removedIngredientIds !== undefined) body.removedIngredientIds = input.removedIngredientIds;
   if (input.kitchenNotes !== undefined) body.kitchenNotes = input.kitchenNotes;
   if (input.version !== undefined) body.version = input.version;
+  if (input.clientMutationId !== undefined) body.clientMutationId = input.clientMutationId;
   return body;
 }
 
@@ -251,6 +280,10 @@ export function sanitizeOrderLinePatchPayload(raw: Record<string, unknown>): Ord
     const n = typeof v === "number" ? v : Number.parseInt(String(v), 10);
     if (Number.isFinite(n) && n >= 1) body.version = n;
   }
+  if ("clientMutationId" in cleaned) {
+    const cm = cleaned.clientMutationId;
+    body.clientMutationId = typeof cm === "string" || cm === null ? cm : null;
+  }
   return buildOrderLinePatchBody(body);
 }
 
@@ -286,6 +319,10 @@ export function sanitizeAddOrderLinesPayload(raw: Record<string, unknown>): AddO
     const v = cleaned.version;
     const n = typeof v === "number" ? v : Number.parseInt(String(v), 10);
     if (Number.isFinite(n) && n >= 1) body.version = n;
+  }
+  if ("clientMutationId" in cleaned) {
+    const cm = cleaned.clientMutationId;
+    body.clientMutationId = typeof cm === "string" || cm === null ? cm : null;
   }
   return buildAddOrderLinesBody(body);
 }
@@ -324,6 +361,10 @@ export function sanitizeOrderCreatePayload(raw: Record<string, unknown>): OrderC
   if ("tableId" in cleaned) body.tableId = cleaned.tableId as string | null;
   if ("customerId" in cleaned) body.customerId = cleaned.customerId as string | null;
   if ("waiterId" in cleaned) body.waiterId = cleaned.waiterId as string | null;
+  if ("waiterName" in cleaned) {
+    const wn = cleaned.waiterName;
+    body.waiterName = typeof wn === "string" || wn === null ? (wn as string | null)?.trim() || null : null;
+  }
   if ("partySize" in cleaned) {
     const ps = cleaned.partySize;
     body.partySize =

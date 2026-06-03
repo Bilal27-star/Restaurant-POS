@@ -39,5 +39,12 @@ export {
   PrinterRole,
   PrintJobKind,
   PrintJobStatus,
+  OrderLineMutationKind,
+  OrderItemKitchenStatus,
+  KitchenPrintIntentStatus,
+  KitchenPrintIntentStationStatus,
+  KitchenMutationKind,
+  KitchenTicketMode,
+  OrderItemKitchenAuditEvent,
   KitchenStation,
 } from "@prisma/client";

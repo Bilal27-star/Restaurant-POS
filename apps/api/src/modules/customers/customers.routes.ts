@@ -1,14 +1,24 @@
 import { Router } from "express";
+
+import type { Env } from "../../config/env.js";
+import { createRequireAuth } from "../../middleware/requireAuth.js";
+import { validateRequest } from "../../validators/validateRequest.js";
+import { CustomersController } from "./customers.controller.js";
 import { CustomersRepository } from "./customers.repository.js";
 import { CustomersService } from "./customers.service.js";
-import { CustomersController } from "./customers.controller.js";
+import { customerSearchQuery, upsertCustomerBody } from "./customers.validation.js";
 
-const repo = new CustomersRepository();
-const service = new CustomersService(repo);
-const controller = new CustomersController(service);
+export function createCustomersRouter(env: Env): Router {
+  const router = Router();
+  const requireAuth = createRequireAuth(env);
 
-export const customersRoutes = Router();
+  const repo = new CustomersRepository();
+  const service = new CustomersService(repo);
+  const controller = new CustomersController(service);
 
-customersRoutes.get("/", controller.list);
-customersRoutes.get("/search", controller.search);
-customersRoutes.post("/", controller.upsert);
+  router.get("/", requireAuth, controller.list);
+  router.get("/search", requireAuth, validateRequest("query", customerSearchQuery), controller.search);
+  router.post("/", requireAuth, validateRequest("body", upsertCustomerBody), controller.upsert);
+
+  return router;
+}

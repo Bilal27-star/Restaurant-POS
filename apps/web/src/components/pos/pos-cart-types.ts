@@ -17,8 +17,10 @@ export interface PosCartLineItem {
   id: string;
   productId: string;
   name: string;
-  /** When true, quantity / remove / notes are disabled (e.g. server-hydrated snapshot). */
+  /** When true, quantity / remove controls are disabled (paid, closed, or cancelled order). */
   readOnly?: boolean;
+  /** When true, per-line kitchen notes can be edited (draft lines only). */
+  notesEditable?: boolean;
   quantity: number;
   /** Base product price in DA (no extras). */
   baseUnitPriceDa: number;

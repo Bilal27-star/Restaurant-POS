@@ -64,6 +64,9 @@ export class ShiftsService {
       createdAt: t.createdAt,
       paymentId: t.paymentId,
       expenseId: t.expenseId,
+      orderId: t.payment?.orderId ?? null,
+      orderType: t.payment?.order?.type ?? null,
+      paymentMethod: t.payment?.method ?? null,
     }));
   }
 

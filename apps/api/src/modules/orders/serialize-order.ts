@@ -1,5 +1,14 @@
+import type { OrderItemKitchenStatus, KitchenStation } from "@pos/database";
 import { money, moneyMulInt, moneyZero } from "../../core/orders/money.js";
 import type { OrderWithRelations } from "./orders.repository.js";
+import { resolveOrderWaiterName } from "./order-waiter-name.js";
+
+type OrderItemKitchenFields = {
+  kitchenStatus?: OrderItemKitchenStatus;
+  kitchenStation?: KitchenStation | null;
+  kitchenSentAt?: Date | null;
+  kitchenRevision?: number;
+};
 
 export function serializeOrderEntity(o: OrderWithRelations): unknown {
   return {
@@ -15,6 +24,7 @@ export function serializeOrderEntity(o: OrderWithRelations): unknown {
     table: o.table ? { id: o.table.id, number: o.table.number, status: o.table.status } : null,
     customer: o.customer,
     waiter: o.waiter,
+    waiterName: resolveOrderWaiterName(o),
     createdBy: o.createdBy,
     kitchenNotes: o.kitchenNotes,
     customerNotes: o.customerNotes,
@@ -27,7 +37,9 @@ export function serializeOrderEntity(o: OrderWithRelations): unknown {
     openedAt: o.openedAt,
     closedAt: o.closedAt,
     version: o.version,
+    kitchenDispatchGeneration: (o as { kitchenDispatchGeneration?: number }).kitchenDispatchGeneration ?? 0,
     items: o.items.map((it) => {
+      const kitchen = it as typeof it & OrderItemKitchenFields;
       const perUnitMods = it.modifiers.reduce((acc, m) => acc.add(m.priceDelta), moneyZero);
       const modifiersLineTotal = moneyMulInt(perUnitMods, it.quantity).toFixed(2);
       return {
@@ -46,6 +58,10 @@ export function serializeOrderEntity(o: OrderWithRelations): unknown {
           priceDelta: m.priceDelta.toFixed(2),
         })),
         modifiersLineTotal,
+        kitchenStatus: kitchen.kitchenStatus ?? "PENDING",
+        kitchenStation: kitchen.kitchenStation ?? null,
+        kitchenSentAt: kitchen.kitchenSentAt?.toISOString() ?? null,
+        kitchenRevision: kitchen.kitchenRevision ?? 0,
       };
     }),
   };

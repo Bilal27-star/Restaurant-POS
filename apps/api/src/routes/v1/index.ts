@@ -4,7 +4,7 @@ import { Router } from "express";
 import type { Env } from "../../config/env.js";
 import { createAnalyticsRouter } from "../../modules/analytics/analytics.routes.js";
 import { createAuthRouter } from "../../modules/auth/auth.routes.js";
-import { customersRoutes } from "../../modules/customers/customers.routes.js";
+import { createCustomersRouter } from "../../modules/customers/customers.routes.js";
 import { createExpensesRouter } from "../../modules/expenses/expenses.routes.js";
 import { createMenuRouter } from "../../modules/menu/index.js";
 import { createOrdersRouter } from "../../modules/orders/orders.routes.js";
@@ -40,7 +40,7 @@ export function buildV1Router(deps: V1RouterDeps): Router {
   router.use("/expenses", createExpensesRouter(deps.env));
   router.use("/analytics", createAnalyticsRouter(deps.env));
   router.use("/settings", createSettingsRouter(deps.env));
-  router.use("/customers", customersRoutes);
+  router.use("/customers", createCustomersRouter(deps.env));
 
   return router;
 }

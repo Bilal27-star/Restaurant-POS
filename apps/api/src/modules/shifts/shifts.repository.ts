@@ -69,6 +69,16 @@ export class ShiftsRepository {
       where: { restaurantId, shiftId },
       orderBy: { createdAt: "desc" },
       take: 200,
+      include: {
+        payment: {
+          select: {
+            id: true,
+            method: true,
+            orderId: true,
+            order: { select: { id: true, type: true } },
+          },
+        },
+      },
     });
   }
 

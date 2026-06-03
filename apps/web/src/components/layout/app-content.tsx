@@ -32,9 +32,9 @@ export function AppContent({ children }: AppContentProps) {
     >
       <div
         className={cn(
-          "w-full min-h-[min(50vh,28rem)]",
-          !isFlexFill && "mx-auto max-w-[1600px]",
-          isFlexFill && "relative z-10 flex min-h-[min(50vh,32rem)] flex-1 flex-col",
+          "w-full",
+          !isFlexFill && "mx-auto max-w-[1600px] min-h-[min(50vh,28rem)]",
+          isFlexFill && "relative z-10 flex min-h-0 flex-1 flex-col",
         )}
       >
         {children}

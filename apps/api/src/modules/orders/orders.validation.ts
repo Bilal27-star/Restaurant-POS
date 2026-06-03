@@ -34,6 +34,7 @@ export const createOrderBody = z
     customerId: uuid.optional().nullable(),
     waiterId: uuid.optional().nullable(),
     partySize: z.coerce.number().int().min(1).max(99).optional().nullable(),
+    waiterName: z.string().max(120).optional().nullable(),
     kitchenNotes: z.string().max(4000).optional().nullable(),
     customerNotes: z.string().max(4000).optional().nullable(),
     taxTotal: z.coerce.string().optional(),
@@ -81,18 +82,25 @@ export const patchOrderBody = z
     customerId: uuid.optional().nullable(),
     waiterId: uuid.optional().nullable(),
     partySize: z.coerce.number().int().min(1).max(99).optional().nullable(),
+    waiterName: z.string().max(120).optional().nullable(),
     taxTotal: z.coerce.string().optional().nullable(),
     discountTotal: z.coerce.string().optional().nullable(),
   })
   .strict()
   .merge(versionOpt);
 
+const clientMutationIdOpt = z.object({
+  /** Offline outbox / sync: stable id for exactly-once line mutations per restaurant. */
+  clientMutationId: z.string().min(8).max(128).optional().nullable(),
+});
+
 export const addOrderLinesBody = z
   .object({
     lines: z.array(orderLineInput).min(1).max(100),
   })
   .strict()
-  .merge(versionOpt);
+  .merge(versionOpt)
+  .merge(clientMutationIdOpt);
 
 export const patchOrderLineBody = z
   .object({
@@ -102,7 +110,8 @@ export const patchOrderLineBody = z
     kitchenNotes: z.string().max(2000).optional().nullable(),
   })
   .strict()
-  .merge(versionOpt);
+  .merge(versionOpt)
+  .merge(clientMutationIdOpt);
 
 export const recordPaymentBody = z
   .object({
@@ -155,6 +164,21 @@ export const cancelOrderBody = z.preprocess((v) => (v == null ? {} : v), optiona
 
 export const deleteLineQuery = z
   .object({
+    version: z.coerce.number().int().min(1).optional(),
+    clientMutationId: z.string().min(8).max(128).optional().nullable(),
+  })
+  .strict();
+
+export const fullKitchenReprintBody = z
+  .object({
+    clientMutationId: z.string().min(8).max(128),
+    lineIds: z.array(uuid).max(200).optional(),
+  })
+  .strict();
+
+export const dispatchPendingKitchenBody = z
+  .object({
+    clientMutationId: z.string().min(8).max(128),
     version: z.coerce.number().int().min(1).optional(),
   })
   .strict();

@@ -8,8 +8,11 @@ import { PageQueryState } from "@/components/data/page-query-state";
 import { useAuth } from "@/auth/auth-context";
 import type { TakeawayCustomer } from "@/components/takeaway/takeaway-customer-types";
 import type { TakeawayCustomerDraft, TakeawayCustomerFieldErrorKey } from "@/components/takeaway/takeaway-customer-validation";
-import { validateTakeawayCustomerDraft } from "@/components/takeaway/takeaway-customer-validation";
-import { cartLinesToTakeawayItems, buildTakeawayKitchenNotes } from "@/components/takeaway/takeaway-pos-bridge";
+import {
+  buildOptionalTakeawayCustomerUpsert,
+  buildTakeawayKitchenNotes,
+  buildTakeawayOrderCustomerNotes,
+} from "@/components/takeaway/takeaway-pos-bridge";
 import { formatAlgeriaPhoneDisplay, phoneKey } from "@/components/takeaway/takeaway-phone-utils";
 import { usePosMenuQuery } from "@/hooks/use-pos-menu-queries";
 import { usePosTableOrderBootstrap } from "@/hooks/use-pos-table-order-bootstrap";
@@ -20,7 +23,11 @@ import { fr } from "@/lib/locale/fr";
 import { queryKeys } from "@/lib/query-keys";
 import { useOfflineRuntime } from "@/offline/offline-runtime-context";
 import { useConnectivityStore } from "@/state/stores/connectivity-store";
-import { usePosOrderStore } from "@/stores/pos-order-store";
+import {
+  extractOrderVersionFromDetail,
+  orderHasPendingKitchenSend,
+  usePosOrderStore,
+} from "@/stores/pos-order-store";
 import { useCustomerSearchQuery } from "@/hooks/use-customer-queries";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
@@ -33,6 +40,9 @@ import { PosMenuItemModal } from "./pos-menu-item-modal";
 import {
   buildAddOrderLinesBody,
   buildOrderCreateBody,
+  buildDispatchPendingKitchenBody,
+  buildOrderLinePatchBody,
+  buildOrderPatchBody,
   cartLinesToOrderApiLines,
   posCartLineToPanelItem,
 } from "./pos-order-cart-adapter";
@@ -46,6 +56,10 @@ const emptyTakeawayDraft: TakeawayCustomerDraft = { name: "", phone: "", address
 
 function defaultIngredientState(row: MenuItemApiRow): { id: string; label: string; included: boolean }[] {
   return row.ingredients.map((i) => ({ id: i.id, label: i.name, included: true }));
+}
+
+function newClientMutationId(): string {
+  return typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `m-${Date.now()}`;
 }
 
 export interface PosWorkspaceProps {
@@ -89,6 +103,7 @@ export function PosWorkspace({ className, initialTableId = null }: PosWorkspaceP
   const [kitchenSending, setKitchenSending] = useState(false);
   const kitchenFlightRef = useRef(false);
   const toastTimeoutRef = useRef<number | null>(null);
+  const lineNotesPatchTimerRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
 
   const flash = useCallback((msg: string) => {
     if (toastTimeoutRef.current != null) {
@@ -114,18 +129,25 @@ export function PosWorkspace({ className, initialTableId = null }: PosWorkspaceP
   const tableLabel = usePosOrderStore((s) => s.tableLabel);
   const activeOrderId = usePosOrderStore((s) => s.activeOrderId);
   const activeOrderVersion = usePosOrderStore((s) => s.activeOrderVersion);
+  const waiterName = usePosOrderStore((s) => s.waiterName);
+  const persistedWaiterName = usePosOrderStore((s) => s.persistedWaiterName);
+  const orderLinesEditable = usePosOrderStore((s) => s.orderLinesEditable);
+  const pendingKitchenRemovalCount = usePosOrderStore((s) => s.pendingKitchenRemovalCount);
 
-  const { setTableContext, clearSession, hydrateFromOrderDetail, addLine, removeLine, incrementQty, decrementQty, setLineNotes, clearCart, computeTotals } =
+  const { setTableContext, clearSession, hydrateFromOrderDetail, setWaiterName, addLine, removeLine, changeQty, incrementQty, decrementQty, setLineNotes, incrementPendingKitchenRemoval, clearCart, computeTotals } =
     usePosOrderStore(
       useShallow((s) => ({
         setTableContext: s.setTableContext,
         clearSession: s.clearSession,
+        setWaiterName: s.setWaiterName,
         hydrateFromOrderDetail: s.hydrateFromOrderDetail,
         addLine: s.addLine,
         removeLine: s.removeLine,
+        changeQty: s.changeQty,
         incrementQty: s.incrementQty,
         decrementQty: s.decrementQty,
         setLineNotes: s.setLineNotes,
+        incrementPendingKitchenRemoval: s.incrementPendingKitchenRemoval,
         clearCart: s.clearCart,
         computeTotals: s.computeTotals,
       })),
@@ -235,9 +257,319 @@ export function PosWorkspace({ className, initialTableId = null }: PosWorkspaceP
     setCustomizeId(product.id);
   };
 
-  const panelLines = useMemo(() => lines.map(posCartLineToPanelItem), [lines]);
+  const canSendToKitchen = useMemo(
+    () => orderHasPendingKitchenSend(lines, pendingKitchenRemovalCount),
+    [lines, pendingKitchenRemovalCount],
+  );
+
+  const panelLines = useMemo(
+    () => lines.map((l) => posCartLineToPanelItem(l, { orderLinesEditable })),
+    [lines, orderLinesEditable],
+  );
   const totals = useMemo(() => computeTotals(), [lines, computeTotals]);
   const totalLabel = formatDa(totals.totalDa);
+
+  const invalidateOrderQueries = useCallback(() => {
+    void qc.invalidateQueries({ queryKey: queryKeys.tables.layout() });
+    if (tableId) void qc.invalidateQueries({ queryKey: queryKeys.pos.tableBootstrap(tableId) });
+  }, [qc, tableId]);
+
+  const mutatePersistedLine = useCallback(
+    async (mutate: (orderVersion: number | null) => Promise<unknown>) => {
+      if (!activeOrderId || !orderLinesEditable || effectiveOffline) return;
+      try {
+        const data = await mutate(activeOrderVersion);
+        hydrateFromOrderDetail(data);
+        invalidateOrderQueries();
+      } catch {
+        flash("Impossible de modifier l’article (réseau ou version).");
+      }
+    },
+    [
+      activeOrderId,
+      activeOrderVersion,
+      effectiveOffline,
+      flash,
+      hydrateFromOrderDetail,
+      invalidateOrderQueries,
+      orderLinesEditable,
+    ],
+  );
+
+  const handleIncrementQty = useCallback(
+    (lineId: string) => {
+      const line = lines.find((l) => l.id === lineId);
+      if (!line || !orderLinesEditable) return;
+      if (line.isDraftLine) {
+        incrementQty(lineId);
+        return;
+      }
+      if (!activeOrderId) return;
+
+      const nextQty = line.quantity + 1;
+
+      if (effectiveOffline) {
+        const clientMutationId = newClientMutationId();
+        if (!user?.restaurantId) {
+          flash("Session requise pour la file d’attente hors ligne.");
+          return;
+        }
+        void offline.sync
+          .enqueue({
+            tenantId: user.restaurantId,
+            deviceId: getOrCreateDeviceId(),
+            kind: "order.line.update",
+            idempotencyKey: null,
+            clientMutationId,
+            baseServerVersion: activeOrderVersion,
+            payload: {
+              orderId: activeOrderId,
+              lineId,
+              ...buildOrderLinePatchBody({
+                quantity: nextQty,
+                clientMutationId,
+                ...(activeOrderVersion != null ? { version: activeOrderVersion } : {}),
+              }),
+            },
+          })
+          .then(() => changeQty(lineId, nextQty))
+          .catch((e) => flash(e instanceof Error ? e.message : "Impossible d’enfiler la mutation hors ligne."));
+        return;
+      }
+
+      void mutatePersistedLine((orderVersion) =>
+        getAppApi().orders.patchLine(
+          activeOrderId,
+          lineId,
+          buildOrderLinePatchBody({
+            quantity: nextQty,
+            clientMutationId: newClientMutationId(),
+            ...(orderVersion != null ? { version: orderVersion } : {}),
+          }),
+        ),
+      );
+    },
+    [
+      activeOrderId,
+      activeOrderVersion,
+      changeQty,
+      effectiveOffline,
+      flash,
+      incrementQty,
+      lines,
+      mutatePersistedLine,
+      offline.sync,
+      orderLinesEditable,
+      user?.restaurantId,
+    ],
+  );
+
+  const handleDecrementQty = useCallback(
+    (lineId: string) => {
+      const line = lines.find((l) => l.id === lineId);
+      if (!line || !orderLinesEditable || line.quantity <= 1) return;
+      if (line.isDraftLine) {
+        decrementQty(lineId);
+        return;
+      }
+      if (!activeOrderId) return;
+
+      const nextQty = line.quantity - 1;
+
+      if (effectiveOffline) {
+        const clientMutationId = newClientMutationId();
+        if (!user?.restaurantId) {
+          flash("Session requise pour la file d’attente hors ligne.");
+          return;
+        }
+        void offline.sync
+          .enqueue({
+            tenantId: user.restaurantId,
+            deviceId: getOrCreateDeviceId(),
+            kind: "order.line.update",
+            idempotencyKey: null,
+            clientMutationId,
+            baseServerVersion: activeOrderVersion,
+            payload: {
+              orderId: activeOrderId,
+              lineId,
+              ...buildOrderLinePatchBody({
+                quantity: nextQty,
+                clientMutationId,
+                ...(activeOrderVersion != null ? { version: activeOrderVersion } : {}),
+              }),
+            },
+          })
+          .then(() => changeQty(lineId, nextQty))
+          .catch((e) => flash(e instanceof Error ? e.message : "Impossible d’enfiler la mutation hors ligne."));
+        return;
+      }
+
+      void mutatePersistedLine((orderVersion) =>
+        getAppApi().orders.patchLine(
+          activeOrderId,
+          lineId,
+          buildOrderLinePatchBody({
+            quantity: nextQty,
+            clientMutationId: newClientMutationId(),
+            ...(orderVersion != null ? { version: orderVersion } : {}),
+          }),
+        ),
+      );
+    },
+    [
+      activeOrderId,
+      activeOrderVersion,
+      changeQty,
+      decrementQty,
+      effectiveOffline,
+      flash,
+      lines,
+      mutatePersistedLine,
+      offline.sync,
+      orderLinesEditable,
+      user?.restaurantId,
+    ],
+  );
+
+  const handleSetLineNotes = useCallback(
+    (lineId: string, notes: string) => {
+      const line = lines.find((l) => l.id === lineId);
+      if (!line || !orderLinesEditable) return;
+      setLineNotes(lineId, notes);
+      if (line.isDraftLine || !activeOrderId) return;
+
+      const prev = lineNotesPatchTimerRef.current.get(lineId);
+      if (prev) clearTimeout(prev);
+
+      const timer = setTimeout(() => {
+        lineNotesPatchTimerRef.current.delete(lineId);
+        const trimmed = notes.trim();
+        const clientMutationId = newClientMutationId();
+
+        if (effectiveOffline) {
+          if (!user?.restaurantId) {
+            flash("Session requise pour la file d’attente hors ligne.");
+            return;
+          }
+          void offline.sync
+            .enqueue({
+              tenantId: user.restaurantId,
+              deviceId: getOrCreateDeviceId(),
+              kind: "order.line.update",
+              idempotencyKey: null,
+              clientMutationId,
+              baseServerVersion: activeOrderVersion,
+              payload: {
+                orderId: activeOrderId,
+                lineId,
+                ...buildOrderLinePatchBody({
+                  kitchenNotes: trimmed ? trimmed : null,
+                  clientMutationId,
+                  ...(activeOrderVersion != null ? { version: activeOrderVersion } : {}),
+                }),
+              },
+            })
+            .catch((e) => flash(e instanceof Error ? e.message : "Impossible d’enfiler la mutation hors ligne."));
+          return;
+        }
+
+        void mutatePersistedLine((orderVersion) =>
+          getAppApi().orders.patchLine(
+            activeOrderId,
+            lineId,
+            buildOrderLinePatchBody({
+              kitchenNotes: trimmed ? trimmed : null,
+              clientMutationId,
+              ...(orderVersion != null ? { version: orderVersion } : {}),
+            }),
+          ),
+        );
+      }, 600);
+
+      lineNotesPatchTimerRef.current.set(lineId, timer);
+    },
+    [
+      activeOrderId,
+      activeOrderVersion,
+      effectiveOffline,
+      flash,
+      lines,
+      mutatePersistedLine,
+      offline.sync,
+      orderLinesEditable,
+      setLineNotes,
+      user?.restaurantId,
+    ],
+  );
+
+  const handleRemoveLine = useCallback(
+    (lineId: string) => {
+      const line = lines.find((l) => l.id === lineId);
+      if (!line || !orderLinesEditable) return;
+      if (line.isDraftLine) {
+        removeLine(lineId);
+        return;
+      }
+      if (!activeOrderId) return;
+
+      if (effectiveOffline) {
+        const clientMutationId = newClientMutationId();
+        if (!user?.restaurantId) {
+          flash("Session requise pour la file d’attente hors ligne.");
+          return;
+        }
+        void offline.sync
+          .enqueue({
+            tenantId: user.restaurantId,
+            deviceId: getOrCreateDeviceId(),
+            kind: "order.line.delete",
+            idempotencyKey: null,
+            clientMutationId,
+            baseServerVersion: activeOrderVersion,
+            payload: {
+              orderId: activeOrderId,
+              lineId,
+              query: {
+                ...(activeOrderVersion != null ? { version: String(activeOrderVersion) } : {}),
+                clientMutationId,
+              },
+            },
+          })
+          .then(() => removeLine(lineId))
+          .catch((e) => flash(e instanceof Error ? e.message : "Impossible d’enfiler la mutation hors ligne."));
+        return;
+      }
+
+      void (async () => {
+        if (!activeOrderId || !orderLinesEditable) return;
+        try {
+          const clientMutationId = newClientMutationId();
+          const query: Record<string, string> = { clientMutationId };
+          if (activeOrderVersion != null) query.version = String(activeOrderVersion);
+          const data = await getAppApi().orders.deleteLine(activeOrderId, lineId, query);
+          hydrateFromOrderDetail(data);
+          invalidateOrderQueries();
+        } catch {
+          flash("Impossible de modifier l’article (réseau ou version).");
+        }
+      })();
+    },
+    [
+      activeOrderId,
+      activeOrderVersion,
+      effectiveOffline,
+      flash,
+      hydrateFromOrderDetail,
+      incrementPendingKitchenRemoval,
+      invalidateOrderQueries,
+      lines,
+      offline.sync,
+      orderLinesEditable,
+      removeLine,
+      user?.restaurantId,
+    ],
+  );
 
   const dineInLockedLabel = tableLabel ? `Table ${tableLabel}` : null;
 
@@ -249,30 +581,26 @@ export function PosWorkspace({ className, initialTableId = null }: PosWorkspaceP
 
     try {
     if (orderType === "takeaway") {
-      const e = validateTakeawayCustomerDraft(takeawayDraft);
-      setTakeawayFieldErrors(e);
-      if (Object.keys(e).length > 0) return;
-
+      setTakeawayFieldErrors({});
         try {
-          // 1. Upsert customer
-          const cRes: any = await getAppApi().customers.upsert({
-            name: takeawayDraft.name.trim(),
-            phone: takeawayDraft.phone,
-            address: takeawayDraft.address.trim(),
-            notes: takeawayDraft.notes.trim(),
-          });
-          const customerId = cRes.id;
+          const upsertPayload = buildOptionalTakeawayCustomerUpsert(takeawayDraft);
+          let customerId: string | null = null;
+          if (upsertPayload) {
+            const cRes = (await getAppApi().customers.upsert(upsertPayload)) as { id?: string };
+            customerId = typeof cRes.id === "string" ? cRes.id : null;
+          }
 
-          // 2. Create order
           const apiLines = cartLinesToOrderApiLines(lines);
           const clientMutationId =
             typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `m-${Date.now()}`;
-          
+
           await getAppApi().orders.create(
             buildOrderCreateBody({
               type: "TAKEAWAY",
               customerId,
               waiterId: user?.id ?? null,
+              waiterName: waiterName.trim() || null,
+              customerNotes: buildTakeawayOrderCustomerNotes(takeawayDraft),
               kitchenNotes: buildTakeawayKitchenNotes(panelLines),
               lines: apiLines,
               clientMutationId,
@@ -307,13 +635,15 @@ export function PosWorkspace({ className, initialTableId = null }: PosWorkspaceP
     }
 
     const draftLines = lines.filter((l) => l.isDraftLine);
-    if (activeOrderId && draftLines.length === 0) {
+    const hasPendingKitchen = orderHasPendingKitchenSend(lines, pendingKitchenRemovalCount);
+
+    if (activeOrderId && !hasPendingKitchen) {
       flash("Ajoutez des articles pour compléter la commande.");
       return;
     }
 
     const apiLines = cartLinesToOrderApiLines(activeOrderId ? draftLines : lines);
-    if (apiLines.length === 0) {
+    if (apiLines.length === 0 && !(activeOrderId && hasPendingKitchen)) {
       flash("Panier vide.");
       return;
     }
@@ -449,6 +779,7 @@ export function PosWorkspace({ className, initialTableId = null }: PosWorkspaceP
                 orderId: activeOrderId,
                 ...buildAddOrderLinesBody({
                   lines: apiLines,
+                  clientMutationId,
                   ...(activeOrderVersion != null ? { version: activeOrderVersion } : {}),
                 }),
               },
@@ -463,14 +794,61 @@ export function PosWorkspace({ className, initialTableId = null }: PosWorkspaceP
         return;
       }
         try {
-          const data = await getAppApi().orders.addLines(
-            activeOrderId,
-            buildAddOrderLinesBody({
-              lines: apiLines,
-              ...(activeOrderVersion != null ? { version: activeOrderVersion } : {}),
-            }),
-          );
-          hydrateFromOrderDetail(data);
+          const clientMutationId =
+            typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `m-${Date.now()}`;
+          const trimmedWaiter = waiterName.trim() || null;
+          let orderVersion = activeOrderVersion;
+          const needsWaiterSync = waiterName.trim() !== persistedWaiterName;
+          if (needsWaiterSync) {
+            const patchData = await getAppApi().orders.patch(
+              activeOrderId,
+              buildOrderPatchBody({
+                waiterName: trimmedWaiter,
+                ...(orderVersion != null ? { version: orderVersion } : {}),
+              }),
+            );
+            const patchedVersion = extractOrderVersionFromDetail(patchData);
+            if (patchedVersion != null) {
+              orderVersion = patchedVersion;
+            }
+          }
+          if (apiLines.length > 0) {
+            const data = await getAppApi().orders.addLines(
+              activeOrderId,
+              buildAddOrderLinesBody({
+                lines: apiLines,
+                clientMutationId,
+                ...(orderVersion != null ? { version: orderVersion } : {}),
+              }),
+            );
+            hydrateFromOrderDetail(data);
+            const hydratedVersion = extractOrderVersionFromDetail(data);
+            if (hydratedVersion != null) {
+              orderVersion = hydratedVersion;
+            }
+            for (const line of draftLines) {
+              removeLine(line.id);
+            }
+          }
+
+          const stateAfterAdd = usePosOrderStore.getState();
+          if (
+            orderHasPendingKitchenSend(
+              stateAfterAdd.lines,
+              stateAfterAdd.pendingKitchenRemovalCount,
+            )
+          ) {
+            const pendingData = await getAppApi().orders.dispatchPendingKitchen(
+              activeOrderId,
+              buildDispatchPendingKitchenBody({
+                clientMutationId: newClientMutationId(),
+                ...(orderVersion != null ? { version: orderVersion } : {}),
+              }),
+            );
+            usePosOrderStore.setState({ pendingKitchenRemovalCount: 0 });
+            hydrateFromOrderDetail(pendingData);
+          }
+
           completeKitchenSendSuccess("Articles envoyés en cuisine.");
           void qc.invalidateQueries({ queryKey: queryKeys.tables.layout() });
           if (tableId) void qc.invalidateQueries({ queryKey: queryKeys.pos.tableBootstrap(tableId) });
@@ -502,6 +880,7 @@ export function PosWorkspace({ className, initialTableId = null }: PosWorkspaceP
       type: "DINE_IN",
       partySize,
       lines: apiLines,
+      waiterName: waiterName.trim() || null,
       ...(user?.id ? { waiterId: user.id } : {}),
       ...(resolvedTableId ? { tableId: resolvedTableId } : {}),
     });
@@ -600,15 +979,15 @@ export function PosWorkspace({ className, initialTableId = null }: PosWorkspaceP
         </div>
       ) : null}
 
-      <div className="relative z-[1] flex min-h-0 flex-1 flex-col">
+      <div className="relative z-[1] flex min-h-0 flex-1 flex-col overflow-hidden">
         <PosSearchBar value={search} onChange={setSearch} filterActiveCount={search.trim() ? 1 : 0} />
 
-        <div className="flex min-h-0 flex-1 flex-col xl:flex-row">
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden xl:flex-row">
             <PosCategoryRail
               categories={categoryTabs}
               activeId={activeCategoryId}
               onSelect={setActiveCategoryId}
-              className="shrink-0 xl:min-h-0"
+              className="h-full min-h-0 shrink-0"
             />
 
             <PosProductGrid
@@ -618,27 +997,29 @@ export function PosWorkspace({ className, initialTableId = null }: PosWorkspaceP
               products={gridCards}
               onQuickAdd={handleQuickAdd}
               onCustomize={handleCustomize}
-              className="min-w-0 flex-1 xl:border-r xl:border-pos-border-subtle"
+              className="h-full min-h-0 min-w-0 flex-1 xl:border-r xl:border-pos-border-subtle"
             />
 
             <PosOrderPanel
-              className="hidden min-h-0 shrink-0 xl:flex"
+              className="hidden h-full min-h-0 overflow-hidden xl:flex xl:w-96 xl:shrink-0 xl:flex-col"
               lines={panelLines}
               itemCount={totals.itemCount}
               totalLabel={totalLabel}
-              onIncrementQty={incrementQty}
-              onDecrementQty={decrementQty}
-              onRemoveLine={removeLine}
-              onSetLineNotes={setLineNotes}
+              onIncrementQty={handleIncrementQty}
+              onDecrementQty={handleDecrementQty}
+              onRemoveLine={handleRemoveLine}
+              onSetLineNotes={handleSetLineNotes}
               orderType={orderType}
               onOrderTypeChange={setOrderType}
+              waiterName={waiterName}
+              onWaiterNameChange={setWaiterName}
               tableNumber={tableNumber}
               onTableNumberChange={setTableNumber}
               dineInTableLockedLabel={dineInLockedLabel}
               sendDisabled={
                 lines.length === 0 ||
                 (orderType === "dine-in" && !activeOrderId && !tableId && !tableNumber.trim()) ||
-                (orderType === "dine-in" && Boolean(activeOrderId) && !lines.some((l) => l.isDraftLine))
+                (orderType === "dine-in" && Boolean(activeOrderId) && !canSendToKitchen)
               }
               sendLoading={kitchenSending}
               takeawayCustomer={{
@@ -669,29 +1050,31 @@ export function PosWorkspace({ className, initialTableId = null }: PosWorkspaceP
       <Sheet open={cartOpen} onOpenChange={setCartOpen}>
         <SheetContent
           side="right"
-          className="w-full gap-0 border-l border-border bg-card p-0 shadow-surface-lg sm:max-w-md"
+          className="flex h-full max-h-full w-full flex-col gap-0 overflow-hidden border-l border-border bg-card p-0 shadow-surface-lg sm:max-w-md"
         >
           <SheetHeader className="sr-only">
             <SheetTitle>Commande</SheetTitle>
           </SheetHeader>
           <PosOrderPanel
-            className="h-full border-0"
+            className="flex h-full min-h-0 max-h-full flex-1 flex-col overflow-hidden border-0"
             lines={panelLines}
             itemCount={totals.itemCount}
             totalLabel={totalLabel}
-            onIncrementQty={incrementQty}
-            onDecrementQty={decrementQty}
-            onRemoveLine={removeLine}
-            onSetLineNotes={setLineNotes}
+            onIncrementQty={handleIncrementQty}
+            onDecrementQty={handleDecrementQty}
+            onRemoveLine={handleRemoveLine}
+            onSetLineNotes={handleSetLineNotes}
             orderType={orderType}
             onOrderTypeChange={setOrderType}
+            waiterName={waiterName}
+            onWaiterNameChange={setWaiterName}
             tableNumber={tableNumber}
             onTableNumberChange={setTableNumber}
             dineInTableLockedLabel={dineInLockedLabel}
             sendDisabled={
               lines.length === 0 ||
               (orderType === "dine-in" && !activeOrderId && !tableId && !tableNumber.trim()) ||
-              (orderType === "dine-in" && Boolean(activeOrderId) && !lines.some((l) => l.isDraftLine))
+              (orderType === "dine-in" && Boolean(activeOrderId) && !canSendToKitchen)
             }
             sendLoading={kitchenSending}
             takeawayCustomer={{

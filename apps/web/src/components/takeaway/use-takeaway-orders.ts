@@ -58,6 +58,7 @@ export function useTakeawayOrders(nowMs: number) {
   const refreshTakeawayQueries = () => {
     void qc.invalidateQueries({ queryKey: queryKeys.orders.takeawayBoard() });
     void qc.invalidateQueries({ queryKey: queryKeys.orders.takeawayHistory() });
+    void qc.invalidateQueries({ queryKey: queryKeys.navigation.counts() });
   };
 
   const startPreparing = async (id: string) => {
@@ -78,18 +79,11 @@ export function useTakeawayOrders(nowMs: number) {
       throw err;
     }
   };
-  const markDelivered = async (id: string) => {
-    try {
-      await getAppApi().orders.complete(id, {});
-      refreshTakeawayQueries();
-    } catch (err) {
-      console.error("takeaway markDelivered failed", err);
-      throw err;
-    }
-  };
   const cancelOrder = async (id: string) => {
+    const target = orders.find((o) => o.id === id);
     try {
-      await getAppApi().orders.cancel(id, {});
+      const body = target?.version != null ? { version: target.version } : {};
+      await getAppApi().orders.cancel(id, body);
       refreshTakeawayQueries();
     } catch (err) {
       console.error("takeaway cancelOrder failed", err);
@@ -168,8 +162,8 @@ export function useTakeawayOrders(nowMs: number) {
     columnDelivered,
     startPreparing,
     markReady,
-    markDelivered,
     cancelOrder,
+    refreshTakeawayQueries,
     kpis,
   };
 }

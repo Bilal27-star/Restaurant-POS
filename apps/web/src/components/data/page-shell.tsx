@@ -17,7 +17,7 @@ export function PageShell({ children, fill = false, className }: PageShellProps)
     <div
       className={cn(
         fill
-          ? "relative flex min-h-[min(50vh,32rem)] flex-1 flex-col min-h-0"
+          ? "relative flex min-h-0 flex-1 flex-col"
           : "relative mx-auto w-full min-h-[min(50vh,28rem)] max-w-[1600px]",
         className,
       )}

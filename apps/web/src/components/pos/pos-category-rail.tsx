@@ -17,11 +17,11 @@ export function PosCategoryRail({ categories, activeId, onSelect, className, onM
   return (
     <div
       className={cn(
-        "shrink-0 border-pos-border-subtle bg-pos-depth backdrop-blur-md xl:w-48 xl:border-r",
+        "flex min-h-0 shrink-0 flex-col border-pos-border-subtle bg-pos-depth backdrop-blur-md xl:h-full xl:min-h-0 xl:w-48 xl:overflow-hidden xl:border-r",
         className,
       )}
     >
-      <div className="flex max-h-[11rem] gap-1.5 overflow-x-auto overflow-y-hidden p-3 xl:max-h-none xl:h-full xl:min-h-0 xl:flex-col xl:overflow-y-auto xl:overflow-x-visible">
+      <div className="flex max-h-[11rem] min-h-0 gap-1.5 overflow-x-auto overflow-y-hidden p-3 xl:h-full xl:max-h-none xl:flex-col xl:overflow-y-auto xl:overflow-x-visible">
           {categories.map((cat, idx) => {
             const Icon = cat.icon;
             const active = cat.id === activeId;

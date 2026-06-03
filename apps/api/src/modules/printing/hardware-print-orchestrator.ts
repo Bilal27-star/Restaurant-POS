@@ -8,6 +8,7 @@ import { prisma } from "../../prisma/index.js";
 import { resolveKitchenStation } from "../menu/kitchen-station.js";
 import type { OrderWithRelations } from "../orders/orders.repository.js";
 import { buildKitchenTicketDto, buildTableTicketDto } from "../orders/printing/order-print-dtos.js";
+import { resolveOrderWaiterName } from "../orders/order-waiter-name.js";
 import { PrintingRepository } from "./printing.repository.js";
 import { PrintingService } from "./printing.service.js";
 
@@ -376,7 +377,7 @@ export class HardwarePrintOrchestrator {
       orderType: order.type,
     });
 
-    const waiterName = order.waiter?.fullName?.trim() || "—";
+    const waiterName = resolveOrderWaiterName(order) ?? "—";
     const doc: TableTicketDocument = {
       kind: "TABLE_TICKET",
       restaurantName: dto.restaurantName,

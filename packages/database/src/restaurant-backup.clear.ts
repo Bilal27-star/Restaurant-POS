@@ -30,6 +30,10 @@ export async function clearRestaurantOperationalData(
     deleted.payments = (
       await tx.payment.deleteMany({ where: { restaurantId } })
     ).count;
+    deleted.orderLineMutationIdempotencies = (
+      await tx.orderLineMutationIdempotency.deleteMany({ where: { restaurantId } })
+    ).count;
+
     deleted.orderItemModifiers = (
       await tx.orderItemModifier.deleteMany({ where: { orderItem: { order: { restaurantId } } } })
     ).count;

@@ -1,6 +1,8 @@
 import { ShoppingBag } from "lucide-react";
 import { useMemo, useState } from "react";
+import { ApiClientError } from "@pos/api-client";
 import { TakeawayBoard } from "@/components/takeaway/takeaway-board";
+import { TakeawayCheckoutModal } from "@/components/takeaway/takeaway-checkout-modal";
 import { useLiveNow, useTakeawayOrders } from "@/components/takeaway/use-takeaway-orders";
 import { Button } from "@/components/ui/button";
 import {
@@ -37,17 +39,23 @@ export function TakeawayPage() {
     columnDelivered,
     startPreparing,
     markReady,
-    markDelivered,
     cancelOrder,
+    refreshTakeawayQueries,
     kpis,
   } = useTakeawayOrders(nowMs);
 
   const [cancelId, setCancelId] = useState<string | null>(null);
+  const [checkoutId, setCheckoutId] = useState<string | null>(null);
   const [cancelBusy, setCancelBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [actionWarning, setActionWarning] = useState<string | null>(null);
   const cancelTarget = useMemo(
     () => orders.find((o) => o.id === cancelId) ?? null,
     [cancelId, orders],
+  );
+  const checkoutTarget = useMemo(
+    () => orders.find((o) => o.id === checkoutId) ?? null,
+    [checkoutId, orders],
   );
 
   const historyOrders = historyQuery.data ?? [];
@@ -65,19 +73,24 @@ export function TakeawayPage() {
       isError={boardError}
       error={ordersQuery.error}
       onRetry={() => void ordersQuery.refetch()}
-      className="relative isolate flex min-h-0 flex-1 flex-col gap-6"
+      className="relative isolate flex min-h-0 flex-1 flex-col gap-6 overflow-hidden"
       isEmpty={false}
     >
-    <div className="relative isolate flex min-h-0 flex-1 flex-col gap-6">
+    <div className="relative isolate flex min-h-0 flex-1 flex-col gap-6 overflow-hidden">
+      {actionWarning ? (
+        <p className="shrink-0 rounded-lg border border-amber-500/35 bg-amber-950/30 px-3 py-2 text-sm font-medium text-amber-100" role="status">
+          {actionWarning}
+        </p>
+      ) : null}
       {actionError ? (
-        <p className="rounded-lg border border-rose-500/35 bg-rose-950/30 px-3 py-2 text-sm font-medium text-rose-100" role="alert">
+        <p className="shrink-0 rounded-lg border border-rose-500/35 bg-rose-950/30 px-3 py-2 text-sm font-medium text-rose-100" role="alert">
           {actionError}
         </p>
       ) : null}
 
       {showDegradedBanner ? (
         <div
-          className="mb-2 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-amber-500/35 bg-amber-950/25 px-3 py-2 text-xs text-amber-100"
+          className="mb-2 flex shrink-0 flex-wrap items-center justify-between gap-2 rounded-xl border border-amber-500/35 bg-amber-950/25 px-3 py-2 text-xs text-amber-100"
           role="status"
         >
           <span>{fr.dashboard.dashboardLoadError}</span>
@@ -86,7 +99,7 @@ export function TakeawayPage() {
           </Button>
         </div>
       ) : null}
-      <header className="relative flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+      <header className="relative flex shrink-0 flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <div className="flex items-center gap-2 text-violet-300/90">
             <ShoppingBag className="size-6" aria-hidden />
@@ -121,7 +134,8 @@ export function TakeawayPage() {
       </header>
 
       {activeTab === "live" ? (
-        <TakeawayBoard
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+          <TakeawayBoard
           nowMs={nowMs}
           query={query}
           onQueryChange={setQuery}
@@ -134,9 +148,10 @@ export function TakeawayPage() {
           columnDelivered={columnDelivered}
           onStartPreparing={startPreparing}
           onMarkReady={markReady}
-          onMarkDelivered={markDelivered}
+          onEncaisser={setCheckoutId}
           onRequestCancel={setCancelId}
         />
+        </div>
       ) : (
         <TakeawayHistory
           orders={historyOrders}
@@ -175,8 +190,14 @@ export function TakeawayPage() {
                   try {
                     await cancelOrder(cancelId);
                     setCancelId(null);
-                  } catch {
-                    setActionError("Impossible d'annuler la commande.");
+                  } catch (err) {
+                    const msg =
+                      err instanceof ApiClientError && typeof err.details === "object" && err.details !== null && "message" in err.details
+                        ? String((err.details as Record<string, unknown>).message)
+                        : err instanceof Error
+                          ? err.message
+                          : "Impossible d'annuler la commande.";
+                    setActionError(msg || "Impossible d'annuler la commande.");
                   } finally {
                     setCancelBusy(false);
                   }
@@ -188,6 +209,18 @@ export function TakeawayPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <TakeawayCheckoutModal
+        order={checkoutTarget}
+        open={checkoutId !== null}
+        onOpenChange={(open) => !open && setCheckoutId(null)}
+        onSuccess={() => {
+          setCheckoutId(null);
+          setActionError(null);
+          refreshTakeawayQueries();
+        }}
+        onPrintWarning={() => setActionWarning(fr.takeawayCheckout.printWarning)}
+      />
     </div>
     </PageQueryState>
     </PageShell>

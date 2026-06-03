@@ -37,7 +37,7 @@ export function PosTakeawayCustomerSection({
   return (
     <div className="surface-dark-ink rounded-xl border border-violet-500/25 bg-gradient-to-b from-purple-950/45 to-zinc-950/40 p-3 shadow-[0_0_28px_rgba(139,92,246,0.12)] backdrop-blur-md">
       <div className="flex items-center justify-between gap-2">
-        <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-violet-200/90">Client livraison</p>
+        <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-violet-200/90">Client (optionnel)</p>
         <span className="rounded-md bg-orange-500/15 px-2 py-0.5 text-[10px] font-semibold text-orange-200/95">
           Takeaway
         </span>
@@ -88,7 +88,7 @@ export function PosTakeawayCustomerSection({
         <div className="space-y-1">
           <label className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide text-on-dark-label">
             <User className="size-3 text-violet-300/80" aria-hidden />
-            Nom
+            Nom <span className="font-normal normal-case text-on-dark-secondary">(optionnel)</span>
           </label>
           <Input
             value={draft.name}
@@ -101,7 +101,9 @@ export function PosTakeawayCustomerSection({
           {fieldErrors.name ? <p className="text-[11px] text-red-300/95">{fieldErrors.name}</p> : null}
         </div>
         <div className="space-y-1">
-          <label className="text-[10px] font-bold uppercase tracking-wide text-on-dark-label">Téléphone</label>
+          <label className="text-[10px] font-bold uppercase tracking-wide text-on-dark-label">
+            Téléphone <span className="font-normal normal-case text-on-dark-secondary">(optionnel)</span>
+          </label>
           <Input
             inputMode="tel"
             value={draft.phone}
@@ -118,7 +120,7 @@ export function PosTakeawayCustomerSection({
       <div className="mt-2.5 space-y-1">
         <label className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide text-on-dark-label">
           <MapPin className="size-3 text-orange-300/85" aria-hidden />
-          Adresse de livraison
+          Adresse de livraison <span className="font-normal normal-case text-on-dark-secondary">(optionnel)</span>
         </label>
         <textarea
           value={draft.address}
