@@ -35,6 +35,8 @@ export interface FinancialTransaction {
   createdAtMs: number;
   relatedOrderId?: string;
   relatedExpenseId?: string;
+  /** Payment row for sale reprints (shift ledger). */
+  paymentId?: string;
   attributedEmployeeId?: string;
 }
 

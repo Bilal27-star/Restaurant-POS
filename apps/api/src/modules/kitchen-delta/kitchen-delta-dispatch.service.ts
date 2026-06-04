@@ -325,12 +325,7 @@ export class KitchenDeltaDispatchService {
       detected = detectKitchenDispatchIntent(ctx);
     } catch (err) {
       if (err instanceof KitchenUnroutedLinesError) {
-        console.warn("[KITCHEN_DELTA_FULL_REPRINT] unrouted lines", {
-          orderId: input.order.id,
-          clientMutationId,
-          unroutedLines: err.unroutedLines,
-        });
-        return emptyDispatchResult();
+        throw err;
       }
       throw err;
     }
@@ -458,12 +453,7 @@ export class KitchenDeltaDispatchService {
       detected = await this.detectForPipeline(input);
     } catch (err) {
       if (err instanceof KitchenUnroutedLinesError) {
-        console.warn("[KITCHEN_DELTA] unrouted lines (post-mutation)", {
-          orderId: input.order.id,
-          clientMutationId,
-          unroutedLines: err.unroutedLines,
-        });
-        return emptyDispatchResult();
+        throw err;
       }
       throw err;
     }

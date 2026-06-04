@@ -8,11 +8,16 @@ import { usePageRouteDiagnostics } from "@/hooks/use-page-route-diagnostics";
 export function OrdersPosPage() {
   const [searchParams] = useSearchParams();
   const initialTableId = searchParams.get("tableId");
+  const initialEditOrderId = searchParams.get("editOrderId");
   usePageRouteDiagnostics("orders-pos");
 
   return (
     <PageShell fill>
-      <PosWorkspace className="min-h-0 flex-1" initialTableId={initialTableId} />
+      <PosWorkspace
+        className="min-h-0 flex-1"
+        initialTableId={initialTableId}
+        initialEditOrderId={initialEditOrderId}
+      />
     </PageShell>
   );
 }

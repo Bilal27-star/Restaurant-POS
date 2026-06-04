@@ -33,6 +33,9 @@ export interface PosOrderPanelProps {
   sendDisabled?: boolean;
   /** While the kitchen / sync request is in flight (double-submit guard). */
   sendLoading?: boolean;
+  /** When editing an existing takeaway order — lock dine-in / takeaway toggle. */
+  lockOrderType?: boolean;
+  sendLabel?: string;
   takeawayCustomer: PosTakeawayCustomerSectionProps;
   onSendToKitchen: () => void;
 }
@@ -65,6 +68,8 @@ export function PosOrderPanel({
   dineInTableLockedLabel,
   sendDisabled = false,
   sendLoading = false,
+  lockOrderType = false,
+  sendLabel,
   takeawayCustomer,
   onSendToKitchen,
 }: PosOrderPanelProps) {
@@ -111,6 +116,7 @@ export function PosOrderPanel({
                 ? "border-transparent bg-gradient-to-r from-[#7c3aed] to-[#db2777] text-white shadow-[0_0_24px_rgba(219,39,119,0.45)] hover:text-white"
                 : "border-pos-border-subtle bg-pos-glass text-muted-foreground hover:bg-secondary hover:text-foreground",
             )}
+            disabled={lockOrderType}
             onClick={() => onOrderTypeChange("dine-in")}
           >
             <span className="mr-1.5" aria-hidden>
@@ -128,6 +134,7 @@ export function PosOrderPanel({
                 ? "border-transparent bg-gradient-to-r from-[#7c3aed] to-[#db2777] text-white shadow-[0_0_24px_rgba(219,39,119,0.45)] hover:text-white"
                 : "border-pos-border-subtle bg-pos-glass text-muted-foreground hover:bg-secondary hover:text-foreground",
             )}
+            disabled={lockOrderType}
             onClick={() => onOrderTypeChange("takeaway")}
           >
             <span className="mr-1.5" aria-hidden>
@@ -262,7 +269,7 @@ export function PosOrderPanel({
           onClick={onSendToKitchen}
         >
           <Send className="mr-2 h-5 w-5 shrink-0" aria-hidden />
-          {sendLoading ? fr.pos.sendKitchenLoading : fr.pos.sendKitchen}
+          {sendLoading ? fr.pos.sendKitchenLoading : sendLabel ?? fr.pos.sendKitchen}
         </Button>
       </div>
     </aside>

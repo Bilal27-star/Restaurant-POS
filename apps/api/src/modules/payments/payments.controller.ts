@@ -108,4 +108,11 @@ export class PaymentsController {
     const data = await this.service.paymentReceiptDocument(auth.restaurantId, paymentId);
     sendSuccess(res, data, { message: "Payment receipt document" });
   });
+
+  reprintReceipt = asyncHandler(async (req: Request, res: Response) => {
+    const auth = req.auth!;
+    const { paymentId } = req.params as { paymentId: string };
+    const data = await this.service.reprintReceipt(auth.restaurantId, auth.userId, paymentId);
+    sendSuccess(res, data, { message: "Receipt reprint queued" });
+  });
 }

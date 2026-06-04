@@ -2,8 +2,21 @@ import type { LoginRequest } from "@pos/api-client";
 import * as React from "react";
 
 import { getLanApiConfig } from "@/lib/lan-api-config";
-import { ensureDesktopBackendReady, getAccessToken, getAppApi, resetAppApiClient, setAccessToken } from "@/lib/app-api";
+import {
+  ensureDesktopBackendReady,
+  getAccessToken,
+  getAccessTokenExpiresAtMs,
+  getAppApi,
+  refreshSessionAccessToken,
+  refreshSessionAccessTokenIfExpiring,
+  registerSessionLifecycle,
+  resetAppApiClient,
+  setAccessToken,
+} from "@/lib/app-api";
 import { clearAppQueryCache } from "@/lib/app-query-client";
+
+/** Poll interval for proactive refresh before JWT access expiry (default 15 min). */
+const SESSION_REFRESH_CHECK_MS = 60_000;
 
 export type AuthUser = {
   id: string;
@@ -33,6 +46,33 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   React.useEffect(() => {
     setReady(true);
   }, []);
+
+  React.useEffect(() => {
+    registerSessionLifecycle({
+      onRefreshed: (token) => {
+        setAccess(token);
+      },
+      onInvalidated: () => {
+        setAccess(null);
+        setUser(null);
+        resetAppApiClient();
+      },
+    });
+    return () => registerSessionLifecycle({});
+  }, []);
+
+  React.useEffect(() => {
+    if (!accessToken) return;
+    if (getAccessTokenExpiresAtMs() == null) {
+      void refreshSessionAccessToken();
+    }
+    const tick = () => {
+      void refreshSessionAccessTokenIfExpiring();
+    };
+    tick();
+    const id = window.setInterval(tick, SESSION_REFRESH_CHECK_MS);
+    return () => window.clearInterval(id);
+  }, [accessToken]);
 
   React.useEffect(() => {
     if (!ready) return;
@@ -66,7 +106,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const login = React.useCallback(async (body: LoginRequest) => {
     clearAppQueryCache();
     const res = await getAppApi().auth.login(body);
-    setAccessToken(res.accessToken);
+    setAccessToken(res.accessToken, res.expiresIn);
     resetAppApiClient();
     setAccess(res.accessToken);
     setUser(res.user as AuthUser);

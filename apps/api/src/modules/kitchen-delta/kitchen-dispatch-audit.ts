@@ -30,6 +30,27 @@ export async function appendKitchenDispatchAuditLogs(
   });
 }
 
+/** Staff-initiated full kitchen reprint from table modal (recovery). */
+export async function appendManualKitchenReprintAuditLog(input: {
+  restaurantId: string;
+  orderId: string;
+  intentId: string;
+  printJobId?: string | null;
+}): Promise<void> {
+  const { prisma } = await import("../../prisma/index.js");
+  await prisma.kitchenDispatchAuditLog.create({
+    data: {
+      restaurantId: input.restaurantId,
+      orderId: input.orderId,
+      orderItemId: null,
+      mutationKind: "FULL_REPRINT",
+      intentId: input.intentId,
+      printJobId: input.printJobId ?? null,
+      status: "KITCHEN_REPRINT_MANUAL",
+    },
+  });
+}
+
 export async function listKitchenDispatchAuditLogs(
   restaurantId: string,
   orderId: string,

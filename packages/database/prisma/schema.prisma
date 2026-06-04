@@ -456,7 +456,8 @@ model RestaurantTable {
   orders       Order[]            @relation("OrderTable")
   reservations TableReservation[]
 
-  @@unique([restaurantId, floorId, number])
+  /// Active-table number uniqueness: partial unique index in DB
+  /// (`restaurant_tables_restaurant_id_floor_id_number_active_key`, `deleted_at IS NULL`).
   @@index([restaurantId, status])
   @@index([floorId])
   @@map("restaurant_tables")

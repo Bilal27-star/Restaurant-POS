@@ -10,8 +10,12 @@ import { applySanitizedOrdersApi } from "@/lib/orders-api";
 import { isTauriDesktop } from "./desktop/tauri-host";
 
 const ACCESS_KEY = "pos_access_token";
+const ACCESS_EXPIRES_KEY = "pos_access_expires_at";
 
 let client: PosApiClient | null = null;
+let refreshInflight: Promise<string | null> | null = null;
+let onSessionRefreshed: ((token: string) => void) | null = null;
+let onSessionInvalidated: (() => void) | null = null;
 let clientOrigin: string | null = null;
 const API_RUNTIME_REFRESH_EVENT = "pos-api-runtime-refresh";
 
@@ -161,13 +165,90 @@ export function getAccessToken(): string | null {
   }
 }
 
-export function setAccessToken(token: string | null): void {
+export function setAccessToken(token: string | null, expiresInSec?: number): void {
   try {
-    if (token) localStorage.setItem(ACCESS_KEY, token);
-    else localStorage.removeItem(ACCESS_KEY);
+    if (token) {
+      localStorage.setItem(ACCESS_KEY, token);
+      if (expiresInSec != null && expiresInSec > 0) {
+        localStorage.setItem(ACCESS_EXPIRES_KEY, String(Date.now() + expiresInSec * 1000));
+      }
+    } else {
+      localStorage.removeItem(ACCESS_KEY);
+      localStorage.removeItem(ACCESS_EXPIRES_KEY);
+    }
   } catch {
     /* ignore */
   }
+}
+
+export function getAccessTokenExpiresAtMs(): number | null {
+  try {
+    const raw = localStorage.getItem(ACCESS_EXPIRES_KEY);
+    if (!raw) return null;
+    const n = Number.parseInt(raw, 10);
+    return Number.isFinite(n) ? n : null;
+  } catch {
+    return null;
+  }
+}
+
+/** AuthProvider registers handlers so refresh/401 stay in sync with React session state. */
+export function registerSessionLifecycle(handlers: {
+  onRefreshed?: (token: string) => void;
+  onInvalidated?: () => void;
+}): void {
+  onSessionRefreshed = handlers.onRefreshed ?? null;
+  onSessionInvalidated = handlers.onInvalidated ?? null;
+}
+
+function invalidateSession(): void {
+  setAccessToken(null);
+  onSessionInvalidated?.();
+}
+
+/**
+ * Exchanges the httpOnly refresh cookie for a new access token (no Bearer on this call).
+ * Serialized so concurrent 401s share one refresh.
+ */
+export async function refreshSessionAccessToken(): Promise<string | null> {
+  if (refreshInflight) return refreshInflight;
+  refreshInflight = (async () => {
+    const origin = apiBaseUrl().replace(/\/$/, "");
+    if (!origin) return null;
+    try {
+      const res = await fetch(`${origin}/api/v1/auth/refresh`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: "{}",
+      });
+      const json = (await res.json()) as {
+        success?: boolean;
+        data?: { accessToken?: string; expiresIn?: number };
+      };
+      if (!res.ok || !json.success || !json.data?.accessToken) {
+        return null;
+      }
+      const token = json.data.accessToken;
+      setAccessToken(token, json.data.expiresIn);
+      onSessionRefreshed?.(token);
+      return token;
+    } catch {
+      return null;
+    } finally {
+      refreshInflight = null;
+    }
+  })();
+  return refreshInflight;
+}
+
+/** Refresh when the access token is within `leadMs` of expiry (long desktop sessions). */
+export async function refreshSessionAccessTokenIfExpiring(leadMs = 120_000): Promise<boolean> {
+  const expiresAt = getAccessTokenExpiresAtMs();
+  if (expiresAt == null) return false;
+  if (Date.now() + leadMs < expiresAt) return false;
+  const token = await refreshSessionAccessToken();
+  return token != null;
 }
 
 function isLocalApiOrigin(origin: string): boolean {
@@ -216,8 +297,9 @@ export function getAppApi(): PosApiClient {
             throttled: status === 429,
           });
         },
+        refreshAccessToken: () => refreshSessionAccessToken(),
         onUnauthorized: () => {
-          setAccessToken(null);
+          invalidateSession();
         },
       }),
     );

@@ -305,6 +305,12 @@ export class OrdersController {
       clientMutationId: body.clientMutationId,
       lineIds: body.lineIds,
     });
+    auditFromRequest(req, {
+      action: "kitchen.reprint.manual",
+      resourceType: "order",
+      resourceId: orderId,
+      metadataJson: { clientMutationId: body.clientMutationId },
+    });
     sendSuccess(res, data, { message: "Kitchen full reprint dispatched" });
   });
 }

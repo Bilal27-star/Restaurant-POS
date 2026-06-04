@@ -106,5 +106,13 @@ export function createPaymentsRouter(env: Env): Router {
     controller.receipt,
   );
 
+  router.post(
+    "/:paymentId/print/receipt",
+    requireAuth,
+    requirePayments,
+    validateRequest("params", paymentIdParams),
+    controller.reprintReceipt,
+  );
+
   return router;
 }

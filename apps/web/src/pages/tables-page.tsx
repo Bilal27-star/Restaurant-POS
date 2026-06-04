@@ -655,6 +655,7 @@ export function TablesPage() {
           flash(fr.tables.toastPayment(methodLabel, suffix));
         }}
         onReceiptPrintWarning={() => flash(fr.tables.receiptPrintWarning)}
+        onKitchenResendSuccess={() => flash(fr.tableDetails.resendKitchenSuccess)}
       />
 
       <TableAddItemsSheet

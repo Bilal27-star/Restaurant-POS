@@ -15,6 +15,8 @@ export type PosApiClientOptions = {
   /** e.g. "" when using Vite proxy, or "http://localhost:4000" */
   baseUrl: string;
   getAccessToken: () => string | null;
+  /** Called on 401 before logout; return a new access token to retry the request once. */
+  refreshAccessToken?: () => Promise<string | null>;
   onUnauthorized?: () => void;
   /** Merged into every request (e.g. desktop client marker for local API bypass). */
   getRequestHeaders?: () => Record<string, string>;
@@ -43,7 +45,7 @@ async function readJson(res: Response): Promise<unknown> {
 export function createPosApiClient(opts: PosApiClientOptions) {
   const apiRoot = joinUrl(opts.baseUrl, "/api/v1");
 
-  async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  async function request<T>(path: string, init?: RequestInit, authRetry = false): Promise<T> {
     const headers = new Headers(init?.headers);
 
     let token = opts.getAccessToken();
@@ -82,8 +84,16 @@ export function createPosApiClient(opts: PosApiClientOptions) {
 
     const json = (await readJson(res)) as ApiSuccessEnvelope<T> | ApiErrorEnvelope | null;
 
-    if (res.status === 401 && opts.onUnauthorized) {
-      opts.onUnauthorized();
+    if (res.status === 401) {
+      const isAuthRoute =
+        path === "/auth/login" || path === "/auth/refresh" || path === "/auth/logout";
+      if (!authRetry && !isAuthRoute && opts.refreshAccessToken) {
+        const newToken = await opts.refreshAccessToken();
+        if (newToken) {
+          return request<T>(path, init, true);
+        }
+      }
+      opts.onUnauthorized?.();
     }
 
     if (!json || typeof json !== "object" || !("success" in json)) {
@@ -221,6 +231,11 @@ export function createPosApiClient(opts: PosApiClientOptions) {
           method: "POST",
           body: JSON.stringify(body),
         }),
+      fullKitchenReprint: (orderId: string, body: { clientMutationId: string; lineIds?: string[] }) =>
+        request<unknown>(`/orders/${orderId}/kitchen/full-reprint`, {
+          method: "POST",
+          body: JSON.stringify(body),
+        }),
       pay: (orderId: string, body: unknown) =>
         request<unknown>(`/orders/${orderId}/payments`, { method: "POST", body: JSON.stringify(body) }),
       complete: (orderId: string, body: unknown) =>
@@ -239,6 +254,8 @@ export function createPosApiClient(opts: PosApiClientOptions) {
       }) => request<unknown>("/payments/checkout", { method: "POST", body: JSON.stringify(body) }),
       get: (paymentId: string) => request<unknown>(`/payments/${paymentId}`),
       receipt: (paymentId: string) => request<unknown>(`/payments/${paymentId}/print/receipt`),
+      reprintReceipt: (paymentId: string) =>
+        request<unknown>(`/payments/${paymentId}/print/receipt`, { method: "POST" }),
       capture: (body: unknown) => request<unknown>("/payments/capture", { method: "POST", body: JSON.stringify(body) }),
       refund: (paymentId: string, body: unknown) =>
         request<unknown>(`/payments/${paymentId}/refund`, { method: "POST", body: JSON.stringify(body) }),

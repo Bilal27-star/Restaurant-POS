@@ -1,4 +1,4 @@
-import { ChefHat, Clock, MapPin, MessageSquare, Phone, User, XCircle } from "lucide-react";
+import { ChefHat, Clock, MapPin, MessageSquare, Pencil, Phone, User, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { formatDa } from "@/components/pos/pos-customization-pricing";
 import { fr } from "@/lib/locale/fr";
@@ -29,6 +29,7 @@ export interface TakeawayOrderCardProps {
   onStartPreparing?: () => void;
   onMarkReady?: () => void;
   onEncaisser?: () => void;
+  onEdit?: () => void;
   onCancel?: () => void;
 }
 
@@ -38,6 +39,7 @@ export function TakeawayOrderCard({
   onStartPreparing,
   onMarkReady,
   onEncaisser,
+  onEdit,
   onCancel,
 }: TakeawayOrderCardProps) {
   const o = order;
@@ -188,6 +190,18 @@ export function TakeawayOrderCard({
 
       {o.status !== "COMPLETED" && o.status !== "CANCELLED" ? (
         <div className="mt-3 flex flex-wrap gap-2 motion-safe:transition-all motion-safe:duration-300">
+          {onEdit ? (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-9 min-h-9 flex-1 rounded-lg border-violet-400/35 bg-transparent text-xs font-semibold text-violet-100 hover:bg-violet-500/15 hover:text-violet-50 sm:flex-none"
+              onClick={onEdit}
+            >
+              <Pencil className="mr-1 size-3.5" aria-hidden />
+              {fr.takeawayOrderCard.edit}
+            </Button>
+          ) : null}
           {o.status === "PENDING" && onStartPreparing ? (
             <Button
               type="button"

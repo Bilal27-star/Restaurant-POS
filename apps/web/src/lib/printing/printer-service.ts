@@ -13,8 +13,12 @@ export class PrinterService {
   /** Loads the canonical payment receipt document from the API and opens a print-friendly window. */
   static async printCashierReceiptFromPaymentId(paymentId: string): Promise<boolean> {
     if (isTauriDesktop()) {
-      // Checkout already enqueued CUSTOMER_RECEIPT; ThermalPrintWorker dispatches to local printer.
-      return true;
+      try {
+        await getAppApi().payments.reprintReceipt(paymentId);
+        return true;
+      } catch {
+        return false;
+      }
     }
     try {
       const raw = await getAppApi().payments.receipt(paymentId);

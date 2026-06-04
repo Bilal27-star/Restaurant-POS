@@ -22,6 +22,7 @@ export interface TakeawayBoardProps {
   onMarkReady: (id: string) => void;
   onEncaisser: (id: string) => void;
   onRequestCancel: (id: string) => void;
+  onEditOrder: (id: string) => void;
 }
 
 function ColumnShell({
@@ -95,6 +96,7 @@ export function TakeawayBoard({
   onMarkReady,
   onEncaisser,
   onRequestCancel,
+  onEditOrder,
 }: TakeawayBoardProps) {
   const filters: { key: TakeawayStatusFilter; label: string }[] = [
     { key: "all", label: fr.takeawayBoard.filterAll },
@@ -112,6 +114,7 @@ export function TakeawayBoard({
       onStartPreparing={o.status === "PENDING" ? () => onStartPreparing(o.id) : undefined}
       onMarkReady={o.status === "PREPARING" ? () => onMarkReady(o.id) : undefined}
       onEncaisser={o.status === "READY" ? () => onEncaisser(o.id) : undefined}
+      onEdit={() => onEditOrder(o.id)}
       onCancel={() => onRequestCancel(o.id)}
     />
   );

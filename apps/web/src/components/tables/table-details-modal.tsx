@@ -1,4 +1,4 @@
-import { ArrowLeft, Clock, CreditCard, UtensilsCrossed, Users, Wallet, Wine, X } from "lucide-react";
+import { ArrowLeft, ChefHat, Clock, CreditCard, UtensilsCrossed, Users, Wallet, Wine, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ApiClientError } from "@pos/api-client";
 import { Button } from "@/components/ui/button";
@@ -11,6 +11,7 @@ import {
 import { cn } from "@/lib/utils";
 import { fr, frGuestsLabel } from "@/lib/locale/fr";
 import { getAppApi } from "@/lib/app-api";
+import { kitchenDispatchErrorMessage, isKitchenSendIncomplete } from "@/lib/kitchen-response";
 import { PrinterService } from "@/lib/printing/printer-service";
 import { useTableDetailQuery } from "@/hooks/use-table-detail-query";
 import { defaultOrderLinesForDisplay, orderDisplayRef, type OrderLineItem, type RestaurantTable } from "@/components/tables/table-types";
@@ -142,13 +143,24 @@ export interface TableDetailsModalProps {
   }) => void | Promise<void>;
   /** Optional: e.g. toast when receipt print/popup fails after a successful payment. */
   onReceiptPrintWarning?: () => void;
+  onKitchenResendSuccess?: () => void;
 }
 
-export function TableDetailsModal({ open, onOpenChange, table, onAddItems, onCheckoutSuccess, onReceiptPrintWarning }: TableDetailsModalProps) {
+export function TableDetailsModal({
+  open,
+  onOpenChange,
+  table,
+  onAddItems,
+  onCheckoutSuccess,
+  onReceiptPrintWarning,
+  onKitchenResendSuccess,
+}: TableDetailsModalProps) {
   const [step, setStep] = useState<"details" | "pay" | "cash">("details");
   const [method, setMethod] = useState<TablePaymentMethod>("cash");
   const [receivedStr, setReceivedStr] = useState("");
   const [checkoutSubmitting, setCheckoutSubmitting] = useState(false);
+  const [kitchenResendSubmitting, setKitchenResendSubmitting] = useState(false);
+  const [kitchenConfirmOpen, setKitchenConfirmOpen] = useState(false);
   const [payError, setPayError] = useState<string | null>(null);
   const checkoutLockRef = useRef(false);
   const checkoutIdempotencyKeyRef = useRef<string | null>(null);
@@ -160,6 +172,8 @@ export function TableDetailsModal({ open, onOpenChange, table, onAddItems, onChe
       setReceivedStr("");
       setCheckoutSubmitting(false);
       setPayError(null);
+      setKitchenConfirmOpen(false);
+      setKitchenResendSubmitting(false);
       checkoutLockRef.current = false;
       checkoutIdempotencyKeyRef.current = null;
     }
@@ -289,6 +303,28 @@ export function TableDetailsModal({ open, onOpenChange, table, onAddItems, onChe
     } finally {
       checkoutLockRef.current = false;
       setCheckoutSubmitting(false);
+    }
+  };
+
+  const runKitchenResend = async () => {
+    if (!order || kitchenResendSubmitting) return;
+    setKitchenResendSubmitting(true);
+    setPayError(null);
+    try {
+      const clientMutationId =
+        typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `kr-${Date.now()}`;
+      const data = await getAppApi().orders.fullKitchenReprint(order.id, { clientMutationId });
+      if (isKitchenSendIncomplete(data)) {
+        setPayError(kitchenDispatchErrorMessage(null, data));
+        return;
+      }
+      setKitchenConfirmOpen(false);
+      onKitchenResendSuccess?.();
+      void detail.refetch();
+    } catch (e) {
+      setPayError(kitchenDispatchErrorMessage(e));
+    } finally {
+      setKitchenResendSubmitting(false);
     }
   };
 
@@ -706,30 +742,69 @@ export function TableDetailsModal({ open, onOpenChange, table, onAddItems, onChe
 
             <footer className="shrink-0 border-t border-pos-border-subtle/90 bg-gradient-to-t from-[rgb(7_8_12/0.98)] via-pos-depth/95 to-pos-depth/85 px-5 py-4 backdrop-blur-md md:px-6">
               {step === "details" ? (
-                <div className="flex gap-3">
+                <div className="flex flex-col gap-3">
+                  {kitchenConfirmOpen ? (
+                    <div className="rounded-[14px] border border-orange-500/30 bg-orange-500/10 px-4 py-3">
+                      <p className="text-center text-sm font-semibold text-orange-100">{fr.tableDetails.resendKitchenConfirm}</p>
+                      <div className="mt-3 flex gap-2">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className="h-10 min-h-10 flex-1 rounded-[12px] border-pos-border-subtle bg-pos-glass font-semibold"
+                          disabled={kitchenResendSubmitting}
+                          onClick={() => setKitchenConfirmOpen(false)}
+                        >
+                          {fr.common.cancel}
+                        </Button>
+                        <Button
+                          type="button"
+                          className="h-10 min-h-10 flex-1 rounded-[12px] border-0 bg-gradient-to-r from-orange-600 to-amber-500 text-sm font-bold text-white"
+                          disabled={kitchenResendSubmitting || lines.length === 0}
+                          onClick={() => void runKitchenResend()}
+                        >
+                          {kitchenResendSubmitting ? fr.tableDetails.resendKitchenLoading : fr.tableDetails.resendKitchenConfirmYes}
+                        </Button>
+                      </div>
+                    </div>
+                  ) : null}
+                  <div className="flex gap-3">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="h-12 min-h-12 flex-1 rounded-[14px] border-pos-border-subtle bg-pos-glass/90 text-sm font-bold text-foreground shadow-sm transition hover:bg-secondary"
+                      disabled={checkoutSubmitting || kitchenResendSubmitting}
+                      onClick={() => {
+                        onAddItems();
+                      }}
+                    >
+                      <span className="mr-1.5 text-base font-extrabold">+</span>
+                      {fr.tableDetails.addItems}
+                    </Button>
+                    <Button
+                      type="button"
+                      className="h-12 min-h-12 flex-1 rounded-[14px] border-0 bg-gradient-to-r from-emerald-700/95 to-emerald-600/95 text-sm font-bold text-white shadow-[0_8px_28px_-10px_rgba(16,185,129,0.4)] transition hover:from-emerald-600 hover:to-emerald-500 hover:shadow-[0_12px_32px_-10px_rgba(52,211,153,0.35)] disabled:pointer-events-none disabled:opacity-40"
+                      disabled={billDa <= 0.004 || kitchenResendSubmitting}
+                      onClick={() => {
+                        checkoutIdempotencyKeyRef.current =
+                          typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : `chk-${Date.now()}`;
+                        setStep("pay");
+                      }}
+                    >
+                      {fr.tableDetails.closeAndPay}
+                    </Button>
+                  </div>
                   <Button
                     type="button"
                     variant="outline"
-                    className="h-12 min-h-12 flex-1 rounded-[14px] border-pos-border-subtle bg-pos-glass/90 text-sm font-bold text-foreground shadow-sm transition hover:bg-secondary"
-                    disabled={checkoutSubmitting}
+                    className="h-11 min-h-11 w-full rounded-[14px] border-orange-500/35 bg-orange-500/10 text-sm font-bold text-orange-100 hover:bg-orange-500/15"
+                    disabled={checkoutSubmitting || kitchenResendSubmitting || lines.length === 0}
                     onClick={() => {
-                      onAddItems();
+                      setPayError(null);
+                      setKitchenConfirmOpen(true);
                     }}
                   >
-                    <span className="mr-1.5 text-base font-extrabold">+</span>
-                    {fr.tableDetails.addItems}
-                  </Button>
-                  <Button
-                    type="button"
-                    className="h-12 min-h-12 flex-1 rounded-[14px] border-0 bg-gradient-to-r from-emerald-700/95 to-emerald-600/95 text-sm font-bold text-white shadow-[0_8px_28px_-10px_rgba(16,185,129,0.4)] transition hover:from-emerald-600 hover:to-emerald-500 hover:shadow-[0_12px_32px_-10px_rgba(52,211,153,0.35)] disabled:pointer-events-none disabled:opacity-40"
-                    disabled={billDa <= 0.004}
-                    onClick={() => {
-                      checkoutIdempotencyKeyRef.current =
-                        typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : `chk-${Date.now()}`;
-                      setStep("pay");
-                    }}
-                  >
-                    {fr.tableDetails.closeAndPay}
+                    <ChefHat className="mr-2 size-4 shrink-0" aria-hidden />
+                    {fr.tableDetails.resendKitchen}
                   </Button>
                 </div>
               ) : null}

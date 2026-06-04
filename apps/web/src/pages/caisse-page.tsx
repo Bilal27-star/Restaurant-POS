@@ -35,6 +35,7 @@ import {
   mapApiUserToCaisseEmployee,
 } from "@/lib/users/user-form-utils";
 import { formatDa } from "@/components/pos/pos-customization-pricing";
+import { PrinterService } from "@/lib/printing/printer-service";
 import { useLiveNow } from "@/components/takeaway/use-takeaway-orders";
 import {
   useActiveShiftQuery,
@@ -221,7 +222,7 @@ function LedgerTableSection({
   employees: { id: string; name: string }[];
   txnSearch: string;
   setTxnSearch: (v: string) => void;
-  onReprintReceipt: (id: string) => void;
+  onReprintReceipt: (paymentId: string) => void;
   lockedWithoutShift: boolean;
 }) {
   return (
@@ -336,7 +337,8 @@ function LedgerTableSection({
                           variant="ghost"
                           size="sm"
                           className="text-muted-foreground hover:text-foreground"
-                          onClick={() => onReprintReceipt(t.id.slice(0, 8))}
+                          disabled={!t.paymentId}
+                          onClick={() => t.paymentId && onReprintReceipt(t.paymentId)}
                         >
                           Réimprimer
                         </Button>
@@ -754,7 +756,12 @@ export function CaissePage() {
                 employees={staffEmployees}
                 txnSearch={txnSearch}
                 setTxnSearch={setTxnSearch}
-                onReprintReceipt={(id) => flashFeedback(`Réimpression du ticket ${id} — bientôt disponible.`)}
+                onReprintReceipt={async (paymentId) => {
+                  const ok = await PrinterService.printCashierReceiptFromPaymentId(paymentId);
+                  flashFeedback(
+                    ok ? "Réimpression du ticket lancée." : "Impossible de réimprimer le ticket (imprimante ou paiement).",
+                  );
+                }}
                 lockedWithoutShift={false}
               />
 

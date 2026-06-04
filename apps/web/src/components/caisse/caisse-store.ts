@@ -400,6 +400,7 @@ export const useCaisseStore = create<CaisseState>((set) => ({
         createdAtMs: new Date(t.createdAt).getTime(),
         relatedOrderId: t.orderId ?? undefined,
         relatedExpenseId: t.expenseId,
+        paymentId: t.paymentId ?? undefined,
       };
     });
     set({ activeShift, transactions });

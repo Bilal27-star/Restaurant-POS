@@ -295,6 +295,29 @@ export class PaymentsService {
     };
   }
 
+  /** Re-enqueue a customer receipt print job for an existing payment (no ledger / shift side effects). */
+  async reprintReceipt(restaurantId: string, actorUserId: string, paymentId: string): Promise<{ enqueued: boolean }> {
+    const p = await this.repo.getPaymentDetail(restaurantId, paymentId);
+    if (!p) {
+      throw ApiError.notFound("Payment not found");
+    }
+    if (!this.hardwarePrint) {
+      return { enqueued: false };
+    }
+    this.hardwarePrint.scheduleReceiptAfterCapture({
+      restaurantId,
+      actorUserId,
+      order: p.order,
+      payment: {
+        id: p.id,
+        method: p.method,
+        amount: p.amount.toFixed(2),
+        changeGiven: p.changeGiven?.toFixed(2) ?? null,
+      },
+    });
+    return { enqueued: true };
+  }
+
   async paymentReceiptDocument(restaurantId: string, paymentId: string): Promise<unknown> {
     const p = await this.repo.getPaymentDetail(restaurantId, paymentId);
     if (!p) {

@@ -1,5 +1,6 @@
 import { ShoppingBag } from "lucide-react";
 import { useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { ApiClientError } from "@pos/api-client";
 import { TakeawayBoard } from "@/components/takeaway/takeaway-board";
 import { TakeawayCheckoutModal } from "@/components/takeaway/takeaway-checkout-modal";
@@ -23,6 +24,7 @@ import type { SerializedTakeawayOrder } from "@/types/serialized-order";
 
 export function TakeawayPage() {
   usePageRouteDiagnostics("takeaway");
+  const navigate = useNavigate();
   const nowMs = useLiveNow(1000);
   const [activeTab, setActiveTab] = useState<"live" | "history">("live");
   const historyQuery = useTakeawayHistoryQuery(activeTab === "history");
@@ -150,6 +152,7 @@ export function TakeawayPage() {
           onMarkReady={markReady}
           onEncaisser={setCheckoutId}
           onRequestCancel={setCancelId}
+          onEditOrder={(orderId) => navigate(`/orders?editOrderId=${encodeURIComponent(orderId)}`)}
         />
         </div>
       ) : (

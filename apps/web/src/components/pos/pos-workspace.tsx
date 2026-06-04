@@ -12,12 +12,14 @@ import {
   buildOptionalTakeawayCustomerUpsert,
   buildTakeawayKitchenNotes,
   buildTakeawayOrderCustomerNotes,
+  isTakeawayOrderEditable,
+  takeawayDraftFromOrderDetail,
 } from "@/components/takeaway/takeaway-pos-bridge";
 import { formatAlgeriaPhoneDisplay, phoneKey } from "@/components/takeaway/takeaway-phone-utils";
 import { usePosMenuQuery } from "@/hooks/use-pos-menu-queries";
 import { usePosTableOrderBootstrap } from "@/hooks/use-pos-table-order-bootstrap";
 import { getAppApi } from "@/lib/app-api";
-import { isOrderPrintRoutingValidationError } from "@/lib/orders-api";
+import { isKitchenSendIncomplete, kitchenSendFailureMessage } from "@/lib/kitchen-response";
 import { menuItemToModalData, menuItemToProductCard, type MenuItemApiRow } from "@/lib/pos-menu-api";
 import { fr } from "@/lib/locale/fr";
 import { queryKeys } from "@/lib/query-keys";
@@ -65,9 +67,11 @@ function newClientMutationId(): string {
 export interface PosWorkspaceProps {
   className?: string;
   initialTableId?: string | null;
+  /** Open POS in takeaway edit mode for an existing order (`/orders?editOrderId=…`). */
+  initialEditOrderId?: string | null;
 }
 
-export function PosWorkspace({ className, initialTableId = null }: PosWorkspaceProps) {
+export function PosWorkspace({ className, initialTableId = null, initialEditOrderId = null }: PosWorkspaceProps) {
   const { user } = useAuth();
   const qc = useQueryClient();
   const offline = useOfflineRuntime();
@@ -99,6 +103,8 @@ export function PosWorkspace({ className, initialTableId = null }: PosWorkspaceP
   const [takeawayFieldErrors, setTakeawayFieldErrors] = useState<Partial<Record<TakeawayCustomerFieldErrorKey, string>>>(
     {},
   );
+  const [editingTakeawayLabel, setEditingTakeawayLabel] = useState<string | null>(null);
+  const [takeawayEditLocked, setTakeawayEditLocked] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [kitchenSending, setKitchenSending] = useState(false);
   const kitchenFlightRef = useRef(false);
@@ -154,8 +160,46 @@ export function PosWorkspace({ className, initialTableId = null }: PosWorkspaceP
     );
 
   useEffect(() => {
+    if (initialEditOrderId) return;
     clearSession();
-  }, [initialTableId, clearSession]);
+    setTakeawayEditLocked(false);
+    setEditingTakeawayLabel(null);
+  }, [initialTableId, initialEditOrderId, clearSession]);
+
+  useEffect(() => {
+    if (!initialEditOrderId) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const data = await getAppApi().orders.get(initialEditOrderId);
+        if (cancelled) return;
+        if (!isTakeawayOrderEditable(data)) {
+          flash("Cette commande à emporter ne peut plus être modifiée.");
+          return;
+        }
+        const o = data as Record<string, unknown>;
+        setOrderType("takeaway");
+        setTakeawayEditLocked(true);
+        setEditingTakeawayLabel(
+          typeof o.orderNumber === "string" || typeof o.orderNumber === "number"
+            ? String(o.orderNumber)
+            : null,
+        );
+        hydrateFromOrderDetail(data);
+        setTakeawayDraft(takeawayDraftFromOrderDetail(data));
+        setCustomerSearch("");
+        setTakeawayFieldErrors({});
+        setCartOpen(true);
+      } catch (err: unknown) {
+        if (!cancelled) {
+          flash(err instanceof Error ? err.message : "Impossible de charger la commande.");
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [initialEditOrderId, flash, hydrateFromOrderDetail]);
 
   useEffect(() => {
     const d = bootstrap.data;
@@ -262,6 +306,13 @@ export function PosWorkspace({ className, initialTableId = null }: PosWorkspaceP
     [lines, pendingKitchenRemovalCount],
   );
 
+  const takeawaySendDisabled =
+    lines.length === 0 ||
+    (Boolean(activeOrderId) && orderType === "takeaway" && !canSendToKitchen);
+
+  const panelSendLabel =
+    orderType === "takeaway" && activeOrderId ? fr.pos.saveTakeawayChanges : undefined;
+
   const panelLines = useMemo(
     () => lines.map((l) => posCartLineToPanelItem(l, { orderLinesEditable })),
     [lines, orderLinesEditable],
@@ -274,6 +325,12 @@ export function PosWorkspace({ className, initialTableId = null }: PosWorkspaceP
     if (tableId) void qc.invalidateQueries({ queryKey: queryKeys.pos.tableBootstrap(tableId) });
   }, [qc, tableId]);
 
+  const invalidateTakeawayOrderQueries = useCallback(() => {
+    void qc.invalidateQueries({ queryKey: queryKeys.orders.takeawayBoard() });
+    void qc.invalidateQueries({ queryKey: queryKeys.orders.takeawayHistory() });
+    void qc.invalidateQueries({ queryKey: queryKeys.orders.all() });
+  }, [qc]);
+
   const mutatePersistedLine = useCallback(
     async (mutate: (orderVersion: number | null) => Promise<unknown>) => {
       if (!activeOrderId || !orderLinesEditable || effectiveOffline) return;
@@ -281,6 +338,9 @@ export function PosWorkspace({ className, initialTableId = null }: PosWorkspaceP
         const data = await mutate(activeOrderVersion);
         hydrateFromOrderDetail(data);
         invalidateOrderQueries();
+        if (orderType === "takeaway" && activeOrderId) {
+          invalidateTakeawayOrderQueries();
+        }
       } catch {
         flash("Impossible de modifier l’article (réseau ou version).");
       }
@@ -292,7 +352,9 @@ export function PosWorkspace({ className, initialTableId = null }: PosWorkspaceP
       flash,
       hydrateFromOrderDetail,
       invalidateOrderQueries,
+      invalidateTakeawayOrderQueries,
       orderLinesEditable,
+      orderType,
     ],
   );
 
@@ -548,8 +610,15 @@ export function PosWorkspace({ className, initialTableId = null }: PosWorkspaceP
           const query: Record<string, string> = { clientMutationId };
           if (activeOrderVersion != null) query.version = String(activeOrderVersion);
           const data = await getAppApi().orders.deleteLine(activeOrderId, lineId, query);
+          if (isKitchenSendIncomplete(data)) {
+            flash(kitchenSendFailureMessage(data));
+            return;
+          }
           hydrateFromOrderDetail(data);
           invalidateOrderQueries();
+          if (orderType === "takeaway") {
+            invalidateTakeawayOrderQueries();
+          }
         } catch {
           flash("Impossible de modifier l’article (réseau ou version).");
         }
@@ -563,6 +632,8 @@ export function PosWorkspace({ className, initialTableId = null }: PosWorkspaceP
       hydrateFromOrderDetail,
       incrementPendingKitchenRemoval,
       invalidateOrderQueries,
+      invalidateTakeawayOrderQueries,
+      orderType,
       lines,
       offline.sync,
       orderLinesEditable,
@@ -582,6 +653,86 @@ export function PosWorkspace({ className, initialTableId = null }: PosWorkspaceP
     try {
     if (orderType === "takeaway") {
       setTakeawayFieldErrors({});
+
+      if (activeOrderId) {
+        const draftLines = lines.filter((l) => l.isDraftLine);
+        const hasPendingKitchen = orderHasPendingKitchenSend(lines, pendingKitchenRemovalCount);
+        if (!hasPendingKitchen && draftLines.length === 0) {
+          flash("Aucune modification à envoyer.");
+          return;
+        }
+        const apiLines = cartLinesToOrderApiLines(draftLines);
+        if (!effectiveOffline) {
+          try {
+            const clientMutationId = newClientMutationId();
+            let orderVersion = activeOrderVersion;
+            if (apiLines.length > 0) {
+              const data = await getAppApi().orders.addLines(
+                activeOrderId,
+                buildAddOrderLinesBody({
+                  lines: apiLines,
+                  clientMutationId,
+                  ...(orderVersion != null ? { version: orderVersion } : {}),
+                }),
+              );
+              if (isKitchenSendIncomplete(data)) {
+                flash(kitchenSendFailureMessage(data));
+                return;
+              }
+              hydrateFromOrderDetail(data);
+              const hydratedVersion = extractOrderVersionFromDetail(data);
+              if (hydratedVersion != null) {
+                orderVersion = hydratedVersion;
+              }
+              for (const line of draftLines) {
+                removeLine(line.id);
+              }
+            }
+
+            const stateAfterAdd = usePosOrderStore.getState();
+            if (
+              orderHasPendingKitchenSend(
+                stateAfterAdd.lines,
+                stateAfterAdd.pendingKitchenRemovalCount,
+              )
+            ) {
+              const pendingData = await getAppApi().orders.dispatchPendingKitchen(
+                activeOrderId,
+                buildDispatchPendingKitchenBody({
+                  clientMutationId: newClientMutationId(),
+                  ...(orderVersion != null ? { version: orderVersion } : {}),
+                }),
+              );
+              if (isKitchenSendIncomplete(pendingData)) {
+                flash(kitchenSendFailureMessage(pendingData));
+                return;
+              }
+              usePosOrderStore.setState({ pendingKitchenRemovalCount: 0 });
+              hydrateFromOrderDetail(pendingData);
+            }
+
+            const stateForKitchenCheck = usePosOrderStore.getState();
+            if (
+              orderHasPendingKitchenSend(
+                stateForKitchenCheck.lines,
+                stateForKitchenCheck.pendingKitchenRemovalCount,
+              )
+            ) {
+              flash("Certains changements cuisine n’ont pas été envoyés.");
+              return;
+            }
+
+            invalidateTakeawayOrderQueries();
+            completeKitchenSendSuccess("Modifications enregistrées.");
+          } catch (err: unknown) {
+            flash(err instanceof Error ? err.message : "Impossible d’enregistrer les modifications.");
+          }
+        } else {
+          flash("Modification hors ligne non disponible pour les commandes existantes.");
+        }
+        return;
+      }
+
         try {
           const upsertPayload = buildOptionalTakeawayCustomerUpsert(takeawayDraft);
           let customerId: string | null = null;
@@ -594,7 +745,7 @@ export function PosWorkspace({ className, initialTableId = null }: PosWorkspaceP
           const clientMutationId =
             typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `m-${Date.now()}`;
 
-          await getAppApi().orders.create(
+          const created = await getAppApi().orders.create(
             buildOrderCreateBody({
               type: "TAKEAWAY",
               customerId,
@@ -607,6 +758,11 @@ export function PosWorkspace({ className, initialTableId = null }: PosWorkspaceP
             }),
           );
 
+          if (isKitchenSendIncomplete(created)) {
+            flash(kitchenSendFailureMessage(created));
+            return;
+          }
+
           clearCart();
           setTakeawayDraft(emptyTakeawayDraft);
           setCustomerSearch("");
@@ -617,18 +773,6 @@ export function PosWorkspace({ className, initialTableId = null }: PosWorkspaceP
           void qc.invalidateQueries({ queryKey: queryKeys.orders.takeawayBoard() });
           void qc.invalidateQueries({ queryKey: queryKeys.orders.takeawayHistory() });
         } catch (err: unknown) {
-          if (isOrderPrintRoutingValidationError(err)) {
-            console.warn("[pos] ignored stale kitchen-ticket fields on takeaway create", err);
-            clearCart();
-            setTakeawayDraft(emptyTakeawayDraft);
-            setCustomerSearch("");
-            setTakeawayFieldErrors({});
-            completeKitchenSendSuccess("Commande à emporter créée.");
-            void qc.invalidateQueries({ queryKey: queryKeys.orders.all() });
-            void qc.invalidateQueries({ queryKey: queryKeys.orders.takeawayBoard() });
-            void qc.invalidateQueries({ queryKey: queryKeys.orders.takeawayHistory() });
-            return;
-          }
           flash(err instanceof Error ? err.message : "Erreur lors de la création de la commande.");
         }
       return;
@@ -821,6 +965,10 @@ export function PosWorkspace({ className, initialTableId = null }: PosWorkspaceP
                 ...(orderVersion != null ? { version: orderVersion } : {}),
               }),
             );
+            if (isKitchenSendIncomplete(data)) {
+              flash(kitchenSendFailureMessage(data));
+              return;
+            }
             hydrateFromOrderDetail(data);
             const hydratedVersion = extractOrderVersionFromDetail(data);
             if (hydratedVersion != null) {
@@ -845,22 +993,30 @@ export function PosWorkspace({ className, initialTableId = null }: PosWorkspaceP
                 ...(orderVersion != null ? { version: orderVersion } : {}),
               }),
             );
+            if (isKitchenSendIncomplete(pendingData)) {
+              flash(kitchenSendFailureMessage(pendingData));
+              return;
+            }
             usePosOrderStore.setState({ pendingKitchenRemovalCount: 0 });
             hydrateFromOrderDetail(pendingData);
+          }
+
+          const stateForKitchenCheck = usePosOrderStore.getState();
+          if (
+            orderHasPendingKitchenSend(
+              stateForKitchenCheck.lines,
+              stateForKitchenCheck.pendingKitchenRemovalCount,
+            )
+          ) {
+            flash("Certains changements cuisine n’ont pas été envoyés.");
+            return;
           }
 
           completeKitchenSendSuccess("Articles envoyés en cuisine.");
           void qc.invalidateQueries({ queryKey: queryKeys.tables.layout() });
           if (tableId) void qc.invalidateQueries({ queryKey: queryKeys.pos.tableBootstrap(tableId) });
         } catch (err: unknown) {
-          if (isOrderPrintRoutingValidationError(err)) {
-            console.warn("[pos] ignored stale kitchen-ticket fields on add lines", err);
-            completeKitchenSendSuccess("Articles envoyés en cuisine.");
-            void qc.invalidateQueries({ queryKey: queryKeys.tables.layout() });
-            if (tableId) void qc.invalidateQueries({ queryKey: queryKeys.pos.tableBootstrap(tableId) });
-            return;
-          }
-          flash("Impossible d’ajouter les articles (réseau ou version).");
+          flash(err instanceof Error ? err.message : "Impossible d’ajouter les articles (réseau ou version).");
         }
       return;
     }
@@ -911,18 +1067,15 @@ export function PosWorkspace({ className, initialTableId = null }: PosWorkspaceP
         const clientMutationId =
           typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `m-${Date.now()}`;
         const data = await getAppApi().orders.create(buildOrderCreateBody({ ...body, clientMutationId }));
+        if (isKitchenSendIncomplete(data)) {
+          flash(kitchenSendFailureMessage(data));
+          return;
+        }
         hydrateFromOrderDetail(data);
         completeKitchenSendSuccess("Commande créée et envoyée en cuisine.");
         void qc.invalidateQueries({ queryKey: queryKeys.tables.layout() });
         if (resolvedTableId) void qc.invalidateQueries({ queryKey: queryKeys.pos.tableBootstrap(resolvedTableId) });
       } catch (err: unknown) {
-        if (isOrderPrintRoutingValidationError(err)) {
-          console.warn("[pos] ignored stale kitchen-ticket fields on order create", err);
-          completeKitchenSendSuccess("Commande créée et envoyée en cuisine.");
-          void qc.invalidateQueries({ queryKey: queryKeys.tables.layout() });
-          if (resolvedTableId) void qc.invalidateQueries({ queryKey: queryKeys.pos.tableBootstrap(resolvedTableId) });
-          return;
-        }
         console.error("FULL ORDER ERROR:", err);
 
         const e = err as { details?: unknown; response?: { data?: unknown } };
@@ -959,6 +1112,15 @@ export function PosWorkspace({ className, initialTableId = null }: PosWorkspaceP
       showLoadingOverlay={menuQuery.isFetching && hasMenuData}
     >
     <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
+      {editingTakeawayLabel ? (
+        <p
+          className="shrink-0 rounded-lg border border-violet-500/30 bg-violet-950/40 px-3 py-2 text-sm font-medium text-violet-100"
+          role="status"
+        >
+          {fr.pos.editingTakeaway(editingTakeawayLabel)}
+        </p>
+      ) : null}
+
       {showDegradedBanner ? (
         <div
           className="mb-2 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-amber-500/35 bg-amber-950/25 px-3 py-2 text-xs text-amber-100"
@@ -1017,11 +1179,15 @@ export function PosWorkspace({ className, initialTableId = null }: PosWorkspaceP
               onTableNumberChange={setTableNumber}
               dineInTableLockedLabel={dineInLockedLabel}
               sendDisabled={
-                lines.length === 0 ||
-                (orderType === "dine-in" && !activeOrderId && !tableId && !tableNumber.trim()) ||
-                (orderType === "dine-in" && Boolean(activeOrderId) && !canSendToKitchen)
+                orderType === "takeaway"
+                  ? takeawaySendDisabled
+                  : lines.length === 0 ||
+                    (!activeOrderId && !tableId && !tableNumber.trim()) ||
+                    (Boolean(activeOrderId) && !canSendToKitchen)
               }
               sendLoading={kitchenSending}
+              lockOrderType={takeawayEditLocked}
+              sendLabel={panelSendLabel}
               takeawayCustomer={{
                 draft: takeawayDraft,
                 onDraftChange: handleTakeawayDraftChange,
@@ -1072,11 +1238,15 @@ export function PosWorkspace({ className, initialTableId = null }: PosWorkspaceP
             onTableNumberChange={setTableNumber}
             dineInTableLockedLabel={dineInLockedLabel}
             sendDisabled={
-              lines.length === 0 ||
-              (orderType === "dine-in" && !activeOrderId && !tableId && !tableNumber.trim()) ||
-              (orderType === "dine-in" && Boolean(activeOrderId) && !canSendToKitchen)
+              orderType === "takeaway"
+                ? takeawaySendDisabled
+                : lines.length === 0 ||
+                  (!activeOrderId && !tableId && !tableNumber.trim()) ||
+                  (Boolean(activeOrderId) && !canSendToKitchen)
             }
             sendLoading={kitchenSending}
+            lockOrderType={takeawayEditLocked}
+            sendLabel={panelSendLabel}
             takeawayCustomer={{
               draft: takeawayDraft,
               onDraftChange: handleTakeawayDraftChange,
