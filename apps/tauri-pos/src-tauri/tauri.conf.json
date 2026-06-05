@@ -7,7 +7,7 @@
     "frontendDist": "../../web/dist",
     "devUrl": "http://localhost:5173",
     "beforeDevCommand": "node scripts/ensure-bundled-backend-dev.mjs && pnpm --filter @pos/web dev",
-    "beforeBuildCommand": "node src-tauri/scripts/validate-tauri-config.mjs && node src-tauri/scripts/package-bundled-backend.mjs --skip-api-build && node src-tauri/scripts/validate-bundled-backend.mjs && node src-tauri/scripts/ensure-installer-binaries.mjs && pnpm --filter @pos/web build"
+    "beforeBuildCommand": "node src-tauri/scripts/validate-tauri-config.mjs && node src-tauri/scripts/package-bundled-backend.mjs && node src-tauri/scripts/validate-bundled-backend.mjs && node src-tauri/scripts/ensure-installer-binaries.mjs && pnpm --filter @pos/web build"
   },
   "app": {
     "windows": [

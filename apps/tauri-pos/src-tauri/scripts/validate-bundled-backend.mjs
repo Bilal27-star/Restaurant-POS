@@ -64,6 +64,18 @@ if (!isFile(bundledRuntime)) {
   );
 }
 
+const ordersValidation = path.join(resources, "bundled-api", "dist", "modules", "orders", "orders.validation.js");
+if (!isFile(ordersValidation)) {
+  fail(`missing bundled orders validation ${ordersValidation}`);
+}
+const ordersValidationSrc = fs.readFileSync(ordersValidation, "utf8");
+if (!/waiterName:\s*z\.string/.test(ordersValidationSrc)) {
+  fail(
+    "bundled-api orders.validation.js is stale: createOrderBody must accept optional waiterName. " +
+      "Run `node apps/tauri-pos/src-tauri/scripts/package-bundled-backend.mjs` after `pnpm --filter @pos/api run build`.",
+  );
+}
+
 const topLevelRuntime = path.join(resources, "desktop-runtime.js");
 if (!isFile(topLevelRuntime)) {
   try {
