@@ -11,13 +11,20 @@ export class ApiClientError extends Error {
   }
 }
 
+export type UnauthorizedCallbackContext = {
+  path: string;
+  authRetry: boolean;
+  refreshAttempted: boolean;
+  apiErrorMessage?: string;
+};
+
 export type PosApiClientOptions = {
   /** e.g. "" when using Vite proxy, or "http://localhost:4000" */
   baseUrl: string;
   getAccessToken: () => string | null;
   /** Called on 401 before logout; return a new access token to retry the request once. */
   refreshAccessToken?: () => Promise<string | null>;
-  onUnauthorized?: () => void;
+  onUnauthorized?: (context: UnauthorizedCallbackContext) => void;
   /** Merged into every request (e.g. desktop client marker for local API bypass). */
   getRequestHeaders?: () => Record<string, string>;
   /** Optional trace hook for diagnostics (URL, status, method). */
@@ -87,13 +94,19 @@ export function createPosApiClient(opts: PosApiClientOptions) {
     if (res.status === 401) {
       const isAuthRoute =
         path === "/auth/login" || path === "/auth/refresh" || path === "/auth/logout";
+      let refreshAttempted = false;
       if (!authRetry && !isAuthRoute && opts.refreshAccessToken) {
+        refreshAttempted = true;
         const newToken = await opts.refreshAccessToken();
         if (newToken) {
           return request<T>(path, init, true);
         }
       }
-      opts.onUnauthorized?.();
+      const apiErrorMessage =
+        json && typeof json === "object" && "success" in json && !json.success
+          ? String((json as ApiErrorEnvelope).error ?? "")
+          : undefined;
+      opts.onUnauthorized?.({ path, authRetry, refreshAttempted, apiErrorMessage });
     }
 
     if (!json || typeof json !== "object" || !("success" in json)) {

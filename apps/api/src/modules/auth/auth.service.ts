@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import type { Request, Response } from "express";
 
-import { isAuthThrottleDisabled } from "../../config/desktop-runtime.js";
+import { isAuthThrottleDisabled, isLocalhostOrigin } from "../../config/desktop-runtime.js";
 import type { Env } from "../../config/env.js";
 import { ApiError } from "../../core/http/ApiError.js";
 import { JwtTokenService } from "../../core/auth/jwt.service.js";
@@ -55,6 +55,14 @@ export class AuthService {
     });
   }
 
+  /** Cross-origin SPA/Tauri clients cannot rely on httpOnly cookies alone (SameSite + HTTP Secure). */
+  private shouldExposeRefreshTokenInBody(req?: Request): boolean {
+    if (this.env.AUTH_REFRESH_TOKEN_IN_BODY) return true;
+    if (this.env.POS_DESKTOP_RUNTIME) return true;
+    if (req && isLocalhostOrigin(req)) return true;
+    return false;
+  }
+
   private async handleFailedLogin(user: UserWithAuthRelations, restaurantId: string, meta: AuthRequestMeta) {
     await this.audit({
       restaurantId,
@@ -86,7 +94,7 @@ export class AuthService {
     }
   }
 
-  async login(body: LoginBody, meta: AuthRequestMeta, res: Response) {
+  async login(body: LoginBody, meta: AuthRequestMeta, res: Response, req?: Request) {
     const restaurant = await this.repo.findRestaurantBySlug(body.restaurantSlug);
     if (!restaurant) {
       console.info("[LOGIN FAILED]", {
@@ -187,10 +195,15 @@ export class AuthService {
       userId: user.id,
       username: user.username,
     });
-    return this.mintSessionAndTokens(user, meta, res);
+    return this.mintSessionAndTokens(user, meta, res, req);
   }
 
-  private async mintSessionAndTokens(user: UserWithAuthRelations, meta: AuthRequestMeta, res: Response) {
+  private async mintSessionAndTokens(
+    user: UserWithAuthRelations,
+    meta: AuthRequestMeta,
+    res: Response,
+    req?: Request,
+  ) {
     const sessionId = randomUUID();
     const refreshToken = this.jwt.signRefreshToken({ sub: user.id, sid: sessionId });
     const tokenHash = hashRefreshToken(refreshToken);
@@ -220,7 +233,7 @@ export class AuthService {
     return {
       accessToken,
       expiresIn: this.env.JWT_ACCESS_TTL_SEC,
-      refreshToken: this.env.AUTH_REFRESH_TOKEN_IN_BODY ? refreshToken : undefined,
+      refreshToken: this.shouldExposeRefreshTokenInBody(req) ? refreshToken : undefined,
       tokenType: "Bearer" as const,
       user: {
         id: user.id,
@@ -298,7 +311,7 @@ export class AuthService {
     return {
       accessToken,
       expiresIn: this.env.JWT_ACCESS_TTL_SEC,
-      refreshToken: this.env.AUTH_REFRESH_TOKEN_IN_BODY ? newRefresh : undefined,
+      refreshToken: this.shouldExposeRefreshTokenInBody(req) ? newRefresh : undefined,
       tokenType: "Bearer" as const,
     };
   }

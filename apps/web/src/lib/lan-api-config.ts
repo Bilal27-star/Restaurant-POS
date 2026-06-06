@@ -49,11 +49,8 @@ function getLocalApiOrigin(): string {
     return `http://127.0.0.1:${DEFAULT_PORT}`;
   }
   if (import.meta.env.DEV) {
-    if (typeof window !== "undefined") {
-      const host = window.location.hostname;
-      if (host) return `http://${host}:${DEFAULT_PORT}`;
-    }
-    return `http://127.0.0.1:${DEFAULT_PORT}`;
+    /** Same-origin via Vite proxy (`/api` → :4000) so httpOnly refresh cookies work in browser dev. */
+    return "";
   }
   return "";
 }

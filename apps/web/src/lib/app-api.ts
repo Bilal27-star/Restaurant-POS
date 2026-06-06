@@ -1,4 +1,8 @@
-import { createPosApiClient, type PosApiClient } from "@pos/api-client";
+import {
+  createPosApiClient,
+  type PosApiClient,
+  type UnauthorizedCallbackContext,
+} from "@pos/api-client";
 import {
   clearLanApiConfig,
   getLanApiConfig,
@@ -11,11 +15,26 @@ import { isTauriDesktop } from "./desktop/tauri-host";
 
 const ACCESS_KEY = "pos_access_token";
 const ACCESS_EXPIRES_KEY = "pos_access_expires_at";
+const REFRESH_KEY = "pos_refresh_token";
 
 let client: PosApiClient | null = null;
 let refreshInflight: Promise<string | null> | null = null;
 let onSessionRefreshed: ((token: string) => void) | null = null;
 let onSessionInvalidated: (() => void) | null = null;
+
+/** Diagnostic reason when the client session is cleared (no auth behavior change). */
+export type SessionInvalidationReason =
+  | "access token expired"
+  | "refresh token failed"
+  | "refresh endpoint returned 401"
+  | "auth/me failed"
+  | "API returned 401"
+  | "session revoked";
+
+let lastRefreshInvalidationReason: Extract<
+  SessionInvalidationReason,
+  "refresh token failed" | "refresh endpoint returned 401"
+> | null = null;
 let clientOrigin: string | null = null;
 const API_RUNTIME_REFRESH_EVENT = "pos-api-runtime-refresh";
 
@@ -181,6 +200,31 @@ export function setAccessToken(token: string | null, expiresInSec?: number): voi
   }
 }
 
+export function getRefreshToken(): string | null {
+  try {
+    return localStorage.getItem(REFRESH_KEY);
+  } catch {
+    return null;
+  }
+}
+
+export function setRefreshToken(token: string | null): void {
+  try {
+    if (token) {
+      localStorage.setItem(REFRESH_KEY, token);
+    } else {
+      localStorage.removeItem(REFRESH_KEY);
+    }
+  } catch {
+    /* ignore */
+  }
+}
+
+export function clearStoredAuthTokens(): void {
+  setAccessToken(null);
+  setRefreshToken(null);
+}
+
 export function getAccessTokenExpiresAtMs(): number | null {
   try {
     const raw = localStorage.getItem(ACCESS_EXPIRES_KEY);
@@ -201,8 +245,35 @@ export function registerSessionLifecycle(handlers: {
   onSessionInvalidated = handlers.onInvalidated ?? null;
 }
 
-function invalidateSession(): void {
-  setAccessToken(null);
+function resolveApiUnauthorizedReason(ctx: UnauthorizedCallbackContext): SessionInvalidationReason {
+  const msg = (ctx.apiErrorMessage ?? "").toLowerCase();
+  if (msg.includes("session is no longer valid")) {
+    return "session revoked";
+  }
+  if (ctx.refreshAttempted && lastRefreshInvalidationReason) {
+    return lastRefreshInvalidationReason;
+  }
+  if (
+    msg.includes("token expired") ||
+    msg.includes("invalid or expired access token") ||
+    msg.includes("invalid token")
+  ) {
+    return "access token expired";
+  }
+  return "API returned 401";
+}
+
+/** Clears stored credentials and notifies AuthProvider. Logs reason + timestamp only. */
+export function invalidateAuthSession(
+  reason: SessionInvalidationReason,
+  detail?: Record<string, unknown>,
+): void {
+  logDataFlow("session_invalidated", {
+    reason,
+    timestamp: new Date().toISOString(),
+    ...detail,
+  });
+  clearStoredAuthTokens();
   onSessionInvalidated?.();
 }
 
@@ -214,26 +285,40 @@ export async function refreshSessionAccessToken(): Promise<string | null> {
   if (refreshInflight) return refreshInflight;
   refreshInflight = (async () => {
     const origin = apiBaseUrl().replace(/\/$/, "");
-    if (!origin) return null;
+    if (!origin) {
+      lastRefreshInvalidationReason = "refresh token failed";
+      return null;
+    }
     try {
+      const refreshToken = getRefreshToken();
       const res = await fetch(`${origin}/api/v1/auth/refresh`, {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: "{}",
+        body: JSON.stringify(refreshToken ? { refreshToken } : {}),
       });
       const json = (await res.json()) as {
         success?: boolean;
-        data?: { accessToken?: string; expiresIn?: number };
+        data?: { accessToken?: string; expiresIn?: number; refreshToken?: string };
       };
+      if (res.status === 401) {
+        lastRefreshInvalidationReason = "refresh endpoint returned 401";
+        return null;
+      }
       if (!res.ok || !json.success || !json.data?.accessToken) {
+        lastRefreshInvalidationReason = "refresh token failed";
         return null;
       }
       const token = json.data.accessToken;
+      lastRefreshInvalidationReason = null;
       setAccessToken(token, json.data.expiresIn);
+      if (json.data.refreshToken) {
+        setRefreshToken(json.data.refreshToken);
+      }
       onSessionRefreshed?.(token);
       return token;
     } catch {
+      lastRefreshInvalidationReason = "refresh token failed";
       return null;
     } finally {
       refreshInflight = null;
@@ -298,8 +383,15 @@ export function getAppApi(): PosApiClient {
           });
         },
         refreshAccessToken: () => refreshSessionAccessToken(),
-        onUnauthorized: () => {
-          invalidateSession();
+        onUnauthorized: (ctx) => {
+          const reason = resolveApiUnauthorizedReason(ctx);
+          invalidateAuthSession(reason, {
+            path: ctx.path,
+            authRetry: ctx.authRetry,
+            refreshAttempted: ctx.refreshAttempted,
+            apiErrorMessage: ctx.apiErrorMessage,
+          });
+          lastRefreshInvalidationReason = null;
         },
       }),
     );

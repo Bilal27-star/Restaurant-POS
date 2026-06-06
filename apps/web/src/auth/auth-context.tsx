@@ -6,12 +6,16 @@ import {
   ensureDesktopBackendReady,
   getAccessToken,
   getAccessTokenExpiresAtMs,
+  clearStoredAuthTokens,
   getAppApi,
+  getRefreshToken,
+  invalidateAuthSession,
   refreshSessionAccessToken,
   refreshSessionAccessTokenIfExpiring,
   registerSessionLifecycle,
   resetAppApiClient,
   setAccessToken,
+  setRefreshToken,
 } from "@/lib/app-api";
 import { clearAppQueryCache } from "@/lib/app-query-client";
 
@@ -91,10 +95,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
       } catch {
         if (!cancelled) {
-          setAccessToken(null);
-          resetAppApiClient();
-          setAccess(null);
-          setUser(null);
+          invalidateAuthSession("auth/me failed");
         }
       }
     })();
@@ -107,19 +108,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     clearAppQueryCache();
     const res = await getAppApi().auth.login(body);
     setAccessToken(res.accessToken, res.expiresIn);
+    if (res.refreshToken) {
+      setRefreshToken(res.refreshToken);
+    }
     resetAppApiClient();
     setAccess(res.accessToken);
     setUser(res.user as AuthUser);
   }, []);
 
   const logout = React.useCallback(async () => {
+    const refreshToken = getRefreshToken();
     try {
-      await getAppApi().auth.logout({});
+      await getAppApi().auth.logout(refreshToken ? { refreshToken } : {});
     } catch {
       /* ignore network errors on logout */
     }
     clearAppQueryCache();
-    setAccessToken(null);
+    clearStoredAuthTokens();
     resetAppApiClient();
     setAccess(null);
     setUser(null);

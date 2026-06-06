@@ -18,7 +18,7 @@ export class AuthController {
   constructor(private readonly auth: AuthService) {}
 
   login = asyncHandler(async (req: Request, res: Response) => {
-    const data = await this.auth.login(req.body, requestMeta(req), res);
+    const data = await this.auth.login(req.body, requestMeta(req), res, req);
     sendSuccess(res, data, { message: "Authenticated", status: 200 });
   });
 
