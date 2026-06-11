@@ -757,7 +757,7 @@ export function CaissePage() {
                 txnSearch={txnSearch}
                 setTxnSearch={setTxnSearch}
                 onReprintReceipt={async (paymentId) => {
-                  const ok = await PrinterService.printCashierReceiptFromPaymentId(paymentId);
+                  const ok = await PrinterService.reprintCashierReceipt(paymentId);
                   flashFeedback(
                     ok ? "Réimpression du ticket lancée." : "Impossible de réimprimer le ticket (imprimante ou paiement).",
                   );

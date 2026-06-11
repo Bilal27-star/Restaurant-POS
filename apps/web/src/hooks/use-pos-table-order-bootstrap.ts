@@ -15,6 +15,18 @@ function parseActiveOrderId(tableJson: unknown): string | null {
   return typeof id === "string" ? id : null;
 }
 
+function parseOrderTableId(orderJson: unknown): string | null {
+  if (!orderJson || typeof orderJson !== "object") return null;
+  const o = orderJson as Record<string, unknown>;
+  const table = o.table;
+  if (table && typeof table === "object") {
+    const tid = (table as Record<string, unknown>).id;
+    if (typeof tid === "string" && tid.length > 0) return tid;
+  }
+  const raw = o.tableId;
+  return typeof raw === "string" && raw.length > 0 ? raw : null;
+}
+
 function parseTableNumber(tableJson: unknown): string {
   if (!tableJson || typeof tableJson !== "object") return "";
   const n = (tableJson as Record<string, unknown>).number;
@@ -42,6 +54,15 @@ export function usePosTableOrderBootstrap(tableId: string | null) {
           return { tableId: tid, tableLabel: label, orderJson: null as unknown | null };
         }
         const orderJson = await getAppApi().orders.get(oid);
+        const orderTableId = parseOrderTableId(orderJson);
+        if (orderTableId && orderTableId !== tid) {
+          logDataFlow("pos_table_bootstrap_order_table_mismatch", {
+            tableId: tid,
+            orderId: oid,
+            orderTableId,
+          });
+          return { tableId: tid, tableLabel: label, orderJson: null as unknown | null };
+        }
         logDataFlow("pos_table_bootstrap_ok", { tableId: tid, status: 200, hasOrder: true, orderId: oid });
         return { tableId: tid, tableLabel: label, orderJson };
       } catch (err) {
@@ -55,7 +76,7 @@ export function usePosTableOrderBootstrap(tableId: string | null) {
         throw err;
       }
     },
-    staleTime: 15_000,
+    staleTime: 0,
     refetchOnWindowFocus: false,
     retry: posQueryRetry,
   });

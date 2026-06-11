@@ -4,6 +4,7 @@ import { prisma } from "../../prisma/index.js";
 
 const orderSummarySelect = {
   id: true,
+  tableId: true,
   orderNumber: true,
   ticketPublicCode: true,
   partySize: true,
@@ -27,11 +28,22 @@ const orderSummarySelect = {
   },
 } satisfies Prisma.OrderSelect;
 
+const openOrdersOnTableInclude = {
+  where: {
+    closedAt: null,
+    status: { notIn: ["COMPLETED", "CANCELLED"] as const },
+  },
+  orderBy: { openedAt: "desc" as const },
+  take: 1,
+  select: orderSummarySelect,
+} satisfies Prisma.RestaurantTableInclude["orders"];
+
 const floorInclude = {
   tables: {
     where: { deletedAt: null },
     orderBy: { number: "asc" as const },
     include: {
+      orders: openOrdersOnTableInclude,
       currentOrder: {
         select: orderSummarySelect,
       },
@@ -44,13 +56,39 @@ export type FloorWithTables = Prisma.RestaurantFloorGetPayload<{ include: typeof
 export type TableWithFloorAndOrder = Prisma.RestaurantTableGetPayload<{
   include: {
     floor: { select: { id: true; name: true } };
+    orders: { select: typeof orderSummarySelect };
     currentOrder: { select: typeof orderSummarySelect };
   };
 }>;
 
+const openOrderDetailInclude = {
+  where: {
+    closedAt: null,
+    status: { notIn: ["COMPLETED", "CANCELLED"] as const },
+  },
+  orderBy: { openedAt: "desc" as const },
+  take: 1,
+  include: {
+    items: {
+      orderBy: { sortOrder: "asc" as const },
+      select: {
+        id: true,
+        menuItemId: true,
+        nameSnapshot: true,
+        quantity: true,
+        unitPrice: true,
+        lineSubtotal: true,
+        modifiers: { select: { label: true, priceDelta: true } },
+      },
+    },
+    waiter: { select: { fullName: true } },
+  },
+} satisfies Prisma.RestaurantTableInclude["orders"];
+
 export type TableDetailPayload = Prisma.RestaurantTableGetPayload<{
   include: {
     floor: { select: { id: true; name: true } };
+    orders: typeof openOrderDetailInclude;
     currentOrder: {
       include: {
         items: {
@@ -86,10 +124,54 @@ export class TablesRepository {
       orderBy: [{ floor: { sortOrder: "asc" } }, { number: "asc" }],
       include: {
         floor: { select: { id: true, name: true } },
+        orders: openOrdersOnTableInclude,
         currentOrder: {
           select: orderSummarySelect,
         },
       },
+    });
+  }
+
+  /** Align `currentOrderId` with the open order whose `tableId` owns this table. */
+  async reconcileCurrentOrderPointer(restaurantId: string, tableId: string): Promise<void> {
+    await prisma.$transaction(async (tx) => {
+      const table = await tx.restaurantTable.findFirst({
+        where: { id: tableId, restaurantId, deletedAt: null },
+        select: { id: true, currentOrderId: true, status: true },
+      });
+      if (!table) return;
+
+      const canonical = await tx.order.findFirst({
+        where: {
+          restaurantId,
+          tableId,
+          closedAt: null,
+          status: { notIn: ["COMPLETED", "CANCELLED"] },
+        },
+        orderBy: { openedAt: "desc" },
+        select: { id: true },
+      });
+
+      const nextOrderId = canonical?.id ?? null;
+      const nextStatus = nextOrderId ? ("OCCUPIED" as const) : ("FREE" as const);
+
+      if (table.currentOrderId !== nextOrderId || table.status !== nextStatus) {
+        await tx.restaurantTable.update({
+          where: { id: tableId },
+          data: { currentOrderId: nextOrderId, status: nextStatus, version: { increment: 1 } },
+        });
+      }
+
+      if (nextOrderId) {
+        await tx.restaurantTable.updateMany({
+          where: {
+            restaurantId,
+            id: { not: tableId },
+            currentOrderId: nextOrderId,
+          },
+          data: { currentOrderId: null, status: "FREE", version: { increment: 1 } },
+        });
+      }
     });
   }
 
@@ -98,6 +180,7 @@ export class TablesRepository {
       where: { id: tableId, restaurantId, deletedAt: null },
       include: {
         floor: { select: { id: true, name: true } },
+        orders: openOrderDetailInclude,
         currentOrder: {
           include: {
             items: {

@@ -357,7 +357,6 @@ export class OrdersRepository {
         if (!table || table.deletedAt) {
           throw new Error("TABLE_NOT_FOUND");
         }
-        let existingOrder = null;
         if (table.currentOrderId) {
           const open = await tx.order.findFirst({
             where: {
@@ -369,22 +368,39 @@ export class OrdersRepository {
             include: orderDetailInclude,
           });
           if (open) {
-            existingOrder = open;
-            console.log("TABLE CHECK:", {
-               tableId: input.tableId,
-               existingOrder
+            if (open.tableId === input.tableId) {
+              return { order: open, inserted: false };
+            }
+            // Stale pointer: currentOrderId references an order owned by another table.
+            await tx.restaurantTable.update({
+              where: { id: input.tableId },
+              data: { currentOrderId: null },
             });
-            return { order: existingOrder, inserted: false };
+          } else {
+            await tx.restaurantTable.update({
+              where: { id: input.tableId },
+              data: { currentOrderId: null },
+            });
           }
+        }
+
+        const orphanOpen = await tx.order.findFirst({
+          where: {
+            restaurantId: input.restaurantId,
+            tableId: input.tableId,
+            closedAt: null,
+            status: { notIn: ["COMPLETED", "CANCELLED"] },
+          },
+          orderBy: { openedAt: "desc" },
+          include: orderDetailInclude,
+        });
+        if (orphanOpen) {
           await tx.restaurantTable.update({
             where: { id: input.tableId },
-            data: { currentOrderId: null },
+            data: { status: "OCCUPIED", currentOrderId: orphanOpen.id, version: { increment: 1 } },
           });
+          return { order: orphanOpen, inserted: false };
         }
-        console.log("TABLE CHECK:", {
-           tableId: input.tableId,
-           existingOrder
-        });
       }
 
       const order = await tx.order.create({
@@ -449,6 +465,14 @@ export class OrdersRepository {
         await tx.restaurantTable.update({
           where: { id: input.tableId },
           data: { status: "OCCUPIED", currentOrderId: order.id, version: { increment: 1 } },
+        });
+        await tx.restaurantTable.updateMany({
+          where: {
+            restaurantId: input.restaurantId,
+            id: { not: input.tableId },
+            currentOrderId: order.id,
+          },
+          data: { currentOrderId: null, status: "FREE", version: { increment: 1 } },
         });
       }
 

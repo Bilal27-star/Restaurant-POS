@@ -271,6 +271,14 @@ export const usePosOrderStore = create<PosOrderStoreState>((set, get) => ({
     if (!parsed) return;
     const raw = orderJson as Record<string, unknown>;
     const waiterName = normalizePersistedWaiterName(raw.waiterName);
+    const tableObj = raw.table;
+    let orderTableId: string | null = null;
+    let orderTableLabel: string | null = null;
+    if (tableObj && typeof tableObj === "object") {
+      const t = tableObj as Record<string, unknown>;
+      if (typeof t.id === "string" && t.id.trim()) orderTableId = t.id;
+      if (typeof t.number === "string" && t.number.trim()) orderTableLabel = t.number.trim();
+    }
     const prev = get();
     const pendingKitchenRemovalCount =
       prev.activeOrderId === parsed.orderId ? prev.pendingKitchenRemovalCount : 0;
@@ -282,6 +290,7 @@ export const usePosOrderStore = create<PosOrderStoreState>((set, get) => ({
       persistedWaiterName: waiterName,
       orderLinesEditable: parseOrderLinesEditable(orderJson),
       pendingKitchenRemovalCount,
+      ...(orderTableId ? { tableId: orderTableId, tableLabel: orderTableLabel } : {}),
     });
   },
 

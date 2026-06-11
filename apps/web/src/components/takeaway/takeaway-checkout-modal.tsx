@@ -128,7 +128,7 @@ export function TakeawayCheckoutModal({
 
       let receiptOk = true;
       if (paymentId) {
-        receiptOk = await PrinterService.printCashierReceiptFromPaymentId(paymentId);
+        receiptOk = await PrinterService.afterSuccessfulCheckout(paymentId);
       }
 
       onSuccess?.();

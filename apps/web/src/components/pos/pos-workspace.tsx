@@ -23,6 +23,7 @@ import { isKitchenSendIncomplete, kitchenSendFailureMessage } from "@/lib/kitche
 import { menuItemToModalData, menuItemToProductCard, type MenuItemApiRow } from "@/lib/pos-menu-api";
 import { fr } from "@/lib/locale/fr";
 import { queryKeys } from "@/lib/query-keys";
+import { findTableIdByNumberInLayout } from "@/lib/tables-layout-cache";
 import { useOfflineRuntime } from "@/offline/offline-runtime-context";
 import { useConnectivityStore } from "@/state/stores/connectivity-store";
 import {
@@ -62,6 +63,13 @@ function defaultIngredientState(row: MenuItemApiRow): { id: string; label: strin
 
 function newClientMutationId(): string {
   return typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `m-${Date.now()}`;
+}
+
+function isTableUuid(value?: string | null): boolean {
+  return (
+    !!value &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)
+  );
 }
 
 export interface PosWorkspaceProps {
@@ -205,7 +213,19 @@ export function PosWorkspace({ className, initialTableId = null, initialEditOrde
     const d = bootstrap.data;
     if (!d?.tableId) return;
     setTableContext({ tableId: d.tableId, tableLabel: d.tableLabel });
-    if (d.orderJson) hydrateFromOrderDetail(d.orderJson);
+    if (d.orderJson) {
+      hydrateFromOrderDetail(d.orderJson);
+      return;
+    }
+    usePosOrderStore.setState({
+      activeOrderId: null,
+      activeOrderVersion: null,
+      lines: [],
+      pendingKitchenRemovalCount: 0,
+      orderLinesEditable: true,
+      waiterName: "",
+      persistedWaiterName: "",
+    });
   }, [bootstrap.data, setTableContext, hydrateFromOrderDetail]);
 
   useEffect(() => {
@@ -794,110 +814,32 @@ export function PosWorkspace({ className, initialTableId = null, initialEditOrde
 
     const normalizedTableNumber = tableNumber.trim();
 
-    // نتأكد أن tableId UUID حقيقي وليس رقم طاولة مثل "1"
-    const isUuid = (value?: string | null) =>
-      !!value &&
-      /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+    let resolvedTableId: string | null = null;
+    if (initialTableId && isTableUuid(initialTableId)) {
+      resolvedTableId = initialTableId;
+    } else if (isTableUuid(tableId)) {
+      resolvedTableId = tableId;
+    } else if (bootstrap.data?.tableId && isTableUuid(bootstrap.data.tableId)) {
+      resolvedTableId = bootstrap.data.tableId;
+    }
 
-    let resolvedTableId =
-      bootstrap.data?.tableLabel === normalizedTableNumber
-        ? bootstrap.data?.tableId
-        : isUuid(tableId)
-          ? tableId
-          : null;
-
-    // Resolve table UUID automatically from typed table number
     if (!resolvedTableId && normalizedTableNumber) {
       try {
-        const layout: any = await getAppApi().tables.getLayout();
-
-        console.log("RAW LAYOUT:", layout);
-
-        const findTablesRecursively = (obj: any): any[] => {
-          if (!obj) return [];
-
-          if (Array.isArray(obj)) {
-            return obj.flatMap(findTablesRecursively);
-          }
-
-          if (typeof obj === "object") {
-            if (
-              Array.isArray(obj.tables) &&
-              obj.tables.some((t: any) => t?.id)
-            ) {
-              return obj.tables;
-            }
-
-            return Object.values(obj).flatMap(findTablesRecursively);
-          }
-
-          return [];
-        };
-
-        const tables = findTablesRecursively(layout);
-
-        console.log("ALL TABLES FOUND:", tables);
-
-        const normalize = (v: any) =>
-          String(v ?? "")
-            .toLowerCase()
-            .replace(/^table\s*/i, "")
-            .replace(/[^a-z0-9]/g, "")
-            .trim();
-
-        const wanted = normalize(normalizedTableNumber);
-        const wantedNumber = Number.parseInt(wanted, 10);
-
-        const matchedTable = tables.find((t: any) => {
-          const values = [
-            t.label,
-            t.number,
-            t.name,
-            t.tableNumber,
-            t.code,
-            t.id,
-          ].filter(Boolean);
-
-          return values.some((value: any) => {
-            const current = normalize(value);
-
-            if (current === wanted) return true;
-
-            const currentNumber = Number.parseInt(current, 10);
-
-            return (
-              !Number.isNaN(wantedNumber) &&
-              !Number.isNaN(currentNumber) &&
-              currentNumber === wantedNumber
-            );
-          });
-        });
-
-        console.log("MATCHED TABLE:", matchedTable);
-
-        if (matchedTable?.id && isUuid(matchedTable.id)) {
-          resolvedTableId = matchedTable.id;
-        }
-
-        if (!resolvedTableId) {
-          console.error("TABLE LOOKUP FAILED", {
-            typedTable: normalizedTableNumber,
-            bootstrap: bootstrap.data,
-            storeTableId: tableId,
-            allTables: tables,
-          });
-        }
-      } catch (e) {
-        console.error("TABLE RESOLUTION ERROR:", e);
-        console.error("TABLE API RAW FAILURE", e);
+        const layout = await getAppApi().tables.getLayout();
+        resolvedTableId = findTableIdByNumberInLayout(layout, normalizedTableNumber) ?? null;
+      } catch {
+        /* lookup failed — handled below */
       }
     }
 
     const partySize = 1;
-    const resolvedTableKey = resolvedTableId || normalizedTableNumber;
 
-    if (!activeOrderId && !normalizedTableNumber) {
-      flash("Entrez un numéro de table.");
+    if (!activeOrderId && !resolvedTableId) {
+      flash(
+        normalizedTableNumber
+          ? `Table ${normalizedTableNumber} introuvable.`
+          : "Entrez un numéro de table.",
+      );
       return;
     }
 
@@ -1018,17 +960,6 @@ export function PosWorkspace({ className, initialTableId = null, initialEditOrde
         } catch (err: unknown) {
           flash(err instanceof Error ? err.message : "Impossible d’ajouter les articles (réseau ou version).");
         }
-      return;
-    }
-
-    if (!resolvedTableId) {
-      console.error("TABLE LOOKUP FAILED", {
-        typedTable: normalizedTableNumber,
-        bootstrap: bootstrap.data,
-        storeTableId: tableId,
-      });
-
-      flash(`Table ${normalizedTableNumber} introuvable. Vérifiez Console.`);
       return;
     }
 

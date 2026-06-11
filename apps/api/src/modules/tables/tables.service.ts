@@ -17,6 +17,30 @@ import {
 import type { TableDetailPayload, TableWithFloorAndOrder } from "./tables.repository.js";
 import { TablesRepository } from "./tables.repository.js";
 
+type OpenOrderHead = {
+  id: string;
+  tableId: string | null;
+  closedAt: Date | null;
+  status: string;
+};
+
+function isOpenOrderRow(o: OpenOrderHead | null | undefined): o is OpenOrderHead {
+  return Boolean(o && !o.closedAt && o.status !== "COMPLETED" && o.status !== "CANCELLED");
+}
+
+/** `order.tableId` is authoritative; `currentOrderId` is a cache that can drift. */
+function resolveActiveOrderForTable<T extends OpenOrderHead>(table: {
+  id: string;
+  orders?: T[];
+  currentOrder?: T | null;
+}): T | null {
+  const owned = table.orders?.find((o) => o.tableId === table.id && isOpenOrderRow(o));
+  if (owned) return owned;
+  const pointed = table.currentOrder;
+  if (pointed && pointed.tableId === table.id && isOpenOrderRow(pointed)) return pointed;
+  return null;
+}
+
 function mapActiveOrderSummary(o: NonNullable<TableWithFloorAndOrder["currentOrder"]>): ActiveOrderSummaryDto {
   return {
     id: o.id,
@@ -32,10 +56,8 @@ function mapActiveOrderSummary(o: NonNullable<TableWithFloorAndOrder["currentOrd
 }
 
 function mapTableListRow(t: TableWithFloorAndOrder): TableListRowDto {
-  const active =
-    t.currentOrder && !t.currentOrder.closedAt && t.currentOrder.status !== "COMPLETED" && t.currentOrder.status !== "CANCELLED"
-      ? mapActiveOrderSummary(t.currentOrder)
-      : null;
+  const open = resolveActiveOrderForTable(t);
+  const active = open ? mapActiveOrderSummary(open) : null;
   return {
     id: t.id,
     restaurantId: t.restaurantId,
@@ -49,12 +71,9 @@ function mapTableListRow(t: TableWithFloorAndOrder): TableListRowDto {
 }
 
 function mapTableDetail(t: TableDetailPayload): TableDetailResponseDto {
-  const co = t.currentOrder;
+  const co = resolveActiveOrderForTable<NonNullable<TableDetailPayload["orders"]>[number]>(t);
   const open =
-    co &&
-    !co.closedAt &&
-    co.status !== "COMPLETED" &&
-    co.status !== "CANCELLED"
+    co
         ? ((): ActiveOrderDetailDto => ({
           id: co.id,
           orderNumber: co.orderNumber,
@@ -112,6 +131,7 @@ export class TablesService {
   }
 
   async getTableById(restaurantId: string, tableId: string): Promise<TableDetailResponseDto> {
+    await this.repo.reconcileCurrentOrderPointer(restaurantId, tableId);
     const t = await this.repo.findTableDetail(restaurantId, tableId);
     if (!t) {
       throw ApiError.notFound("Table not found");
