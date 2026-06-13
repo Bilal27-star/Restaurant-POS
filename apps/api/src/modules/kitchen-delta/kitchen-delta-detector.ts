@@ -3,6 +3,8 @@ import type {
   KitchenDetectContext,
   KitchenDetectLine,
   KitchenDispatchIntent,
+  KitchenStationBundle,
+  UnroutedLine,
 } from "./kitchen-delta.types.js";
 import {
   attachStationToLines,
@@ -10,6 +12,7 @@ import {
   resolveLineKitchenStation,
   validateBundlesAtPreflight,
 } from "./kitchen-delta-routing.js";
+import { logSkippedUnroutedKitchenLines } from "./kitchen-unrouted-log.js";
 import {
   computeKitchenSnapshotHash,
   diffModifierLabels,
@@ -114,17 +117,37 @@ function finalizeIntent(
   };
 }
 
+/** Skip unrouted lines, log them, and build an intent from routed bundles only. */
+function finalizeRoutedStationBundles(
+  ctx: KitchenDetectContext,
+  ticketMode: KitchenDispatchIntent["ticketMode"],
+  bundles: KitchenStationBundle[],
+  unrouted: UnroutedLine[],
+): KitchenDispatchIntent | null {
+  if (unrouted.length > 0) {
+    logSkippedUnroutedKitchenLines({
+      restaurantId: ctx.restaurantId,
+      orderId: ctx.orderId,
+      lines: unrouted,
+    });
+  }
+  if (bundles.length === 0) {
+    return null;
+  }
+  const routing = validateBundlesAtPreflight(bundles, []);
+  if (!routing.ok) {
+    throw new KitchenUnroutedLinesError(routing.unroutedLines);
+  }
+  return finalizeIntent(ctx, ticketMode, attachStationToLines(bundles));
+}
+
 function detectCreate(ctx: KitchenDetectContext & { mutationKind: "CREATE" }): KitchenDispatchIntent | null {
   const lineSections = ctx.lines.map((line) => ({
     line,
     section: { kind: "ADDED" as const, lines: [toAddedLine(line)] },
   }));
   const { bundles, unrouted } = buildStationBundles(lineSections, []);
-  const routing = validateBundlesAtPreflight(bundles, unrouted);
-  if (!routing.ok) {
-    throw new KitchenUnroutedLinesError(routing.unroutedLines);
-  }
-  return finalizeIntent(ctx, "NEW", attachStationToLines(bundles));
+  return finalizeRoutedStationBundles(ctx, "NEW", bundles, unrouted);
 }
 
 function detectLineAdd(ctx: KitchenDetectContext & { mutationKind: "LINE_ADD"; addedLineIds: string[] }): KitchenDispatchIntent | null {
@@ -136,11 +159,7 @@ function detectLineAdd(ctx: KitchenDetectContext & { mutationKind: "LINE_ADD"; a
     section: { kind: "ADDED" as const, lines: [toAddedLine(line)] },
   }));
   const { bundles, unrouted } = buildStationBundles(lineSections, []);
-  const routing = validateBundlesAtPreflight(bundles, unrouted);
-  if (!routing.ok) {
-    throw new KitchenUnroutedLinesError(routing.unroutedLines);
-  }
-  return finalizeIntent(ctx, "NEW", attachStationToLines(bundles));
+  return finalizeRoutedStationBundles(ctx, "NEW", bundles, unrouted);
 }
 
 function detectLineUpdate(
@@ -160,11 +179,7 @@ function detectLineUpdate(
 
   const lineSections = [{ line: after, section: { kind: "MODIFIED" as const, lines: [deltaLine] } }];
   const { bundles, unrouted } = buildStationBundles(lineSections, []);
-  const routing = validateBundlesAtPreflight(bundles, unrouted);
-  if (!routing.ok) {
-    throw new KitchenUnroutedLinesError(routing.unroutedLines);
-  }
-  return finalizeIntent(ctx, "UPDATE", attachStationToLines(bundles));
+  return finalizeRoutedStationBundles(ctx, "UPDATE", bundles, unrouted);
 }
 
 function detectLineDelete(
@@ -178,11 +193,7 @@ function detectLineDelete(
   const removed = buildRemovedLine(line);
   const lineSections = [{ line, section: { kind: "REMOVED" as const, lines: [removed] } }];
   const { bundles, unrouted } = buildStationBundles(lineSections, []);
-  const routing = validateBundlesAtPreflight(bundles, unrouted);
-  if (!routing.ok) {
-    throw new KitchenUnroutedLinesError(routing.unroutedLines);
-  }
-  return finalizeIntent(ctx, "CANCEL", attachStationToLines(bundles));
+  return finalizeRoutedStationBundles(ctx, "CANCEL", bundles, unrouted);
 }
 
 function lineBeforeFromLastSent(after: KitchenDetectLine): KitchenDetectLine {
@@ -233,11 +244,7 @@ function detectDispatchPending(
   const ticketMode = hasRemoved && !hasModified ? "CANCEL" : "UPDATE";
 
   const { bundles, unrouted } = buildStationBundles(lineSections, []);
-  const routing = validateBundlesAtPreflight(bundles, unrouted);
-  if (!routing.ok) {
-    throw new KitchenUnroutedLinesError(routing.unroutedLines);
-  }
-  return finalizeIntent(ctx, ticketMode, attachStationToLines(bundles));
+  return finalizeRoutedStationBundles(ctx, ticketMode, bundles, unrouted);
 }
 
 function detectFullReprint(
@@ -260,11 +267,7 @@ function detectFullReprint(
     section: { kind: "ADDED" as const, lines: [toAddedLine(line)] },
   }));
   const { bundles, unrouted } = buildStationBundles(lineSections, []);
-  const routing = validateBundlesAtPreflight(bundles, unrouted);
-  if (!routing.ok) {
-    throw new KitchenUnroutedLinesError(routing.unroutedLines);
-  }
-  return finalizeIntent(ctx, "FULL_REPRINT", attachStationToLines(bundles));
+  return finalizeRoutedStationBundles(ctx, "FULL_REPRINT", bundles, unrouted);
 }
 
 function detectOrderInfo(
@@ -278,11 +281,14 @@ function detectOrderInfo(
   return null;
 }
 
-/** Thrown during preflight when routing fails — maps to HTTP 422. */
+/**
+ * Thrown only when routed bundles are internally inconsistent (programming error).
+ * Unrouted catalog lines are skipped via finalizeRoutedStationBundles instead.
+ */
 export class KitchenUnroutedLinesError extends Error {
   readonly code = "KITCHEN_UNROUTED_LINES" as const;
 
-  constructor(readonly unroutedLines: { orderItemId: string | null; nameSnapshot: string }[]) {
+  constructor(readonly unroutedLines: UnroutedLine[]) {
     super("One or more items cannot be routed to a kitchen station.");
     this.name = "KitchenUnroutedLinesError";
   }
@@ -290,7 +296,8 @@ export class KitchenUnroutedLinesError extends Error {
 
 /**
  * Phase 0 preflight detector — pure, read-only.
- * Returns null when no printable delta; throws KitchenUnroutedLinesError on unrouted lines.
+ * Unrouted lines are skipped on every mutation; routed lines still dispatch.
+ * Returns null when no printable delta.
  */
 export function detectKitchenDispatchIntent(ctx: KitchenDetectContext): KitchenDispatchIntent | null {
   switch (ctx.mutationKind) {

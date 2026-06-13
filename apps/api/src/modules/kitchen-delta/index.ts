@@ -42,7 +42,6 @@ export {
   KitchenDeltaRepository,
   mapKitchenOrderItemRowToState,
   mapOrderItemToKitchenDetectLine,
-  mapOrderLinesToKitchenDetectLines,
   persistSentKitchenSnapshot,
   type KitchenDeltaTx,
   type KitchenOrderItemRow,

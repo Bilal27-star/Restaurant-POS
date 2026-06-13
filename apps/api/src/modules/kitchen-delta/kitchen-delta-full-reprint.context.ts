@@ -9,8 +9,9 @@ export type KitchenFullReprintPipelineInput = {
   lineIds?: string[];
 };
 
-function baseOrderContext(order: OrderWithRelations) {
+function baseOrderContext(restaurantId: string, order: OrderWithRelations) {
   return {
+    restaurantId,
     orderId: order.id,
     orderNumber: order.orderNumber,
     tableNumber: order.table?.number ?? null,
@@ -25,7 +26,7 @@ export function buildFullReprintDetectContext(
   lines: KitchenDetectLine[],
 ): KitchenDetectFullReprintContext {
   return {
-    ...baseOrderContext(input.order),
+    ...baseOrderContext(input.restaurantId, input.order),
     mutationKind: "FULL_REPRINT",
     clientMutationId: input.clientMutationId,
     lines,

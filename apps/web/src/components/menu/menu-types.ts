@@ -1,3 +1,5 @@
+import type { CategoryKitchenStationId } from "./kitchen-station-options";
+
 export type CategoryIconId =
   | "pizza"
   | "burger"
@@ -17,6 +19,7 @@ export interface MenuCategory {
   name: string;
   iconId: CategoryIconId;
   iconTint: string;
+  kitchenStation: CategoryKitchenStationId;
   description?: string;
 }
 

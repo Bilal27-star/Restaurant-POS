@@ -1,6 +1,10 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { useAuth } from "@/auth/auth-context";
+import {
+  kitchenStationToApi,
+  normalizeKitchenStationId,
+} from "@/components/menu/kitchen-station-options";
 import type { MenuCategory, MenuItem } from "@/components/menu/menu-types";
 import { logDataFlow } from "@/lib/desktop/data-flow-log";
 import { getAppApi, resolvedApiOrigin } from "@/lib/app-api";
@@ -16,6 +20,19 @@ export function menuMutationErrorMessage(err: unknown): string {
     return payload?.message ?? payload?.error?.message ?? err.message;
   }
   return err instanceof Error ? err.message : String(err);
+}
+
+const COLOR_TOKEN_TINTS: Record<string, string> = {
+  orange: "bg-orange-500/25 text-orange-200",
+  rose: "bg-rose-500/25 text-rose-200",
+  sky: "bg-sky-500/25 text-sky-200",
+  emerald: "bg-emerald-500/25 text-emerald-200",
+  violet: "bg-violet-500/25 text-violet-200",
+  amber: "bg-amber-500/25 text-amber-200",
+};
+
+function tintFromColorToken(token: string | null | undefined): string {
+  return COLOR_TOKEN_TINTS[token ?? ""] ?? COLOR_TOKEN_TINTS.violet!;
 }
 
 function colorTokenFromCategoryTint(tint: string): string | null {
@@ -97,7 +114,10 @@ function mapCategories(raw: unknown): MenuCategory[] {
       id: String(c.id ?? ""),
       name: String(c.name ?? ""),
       iconId: (c.iconKey as MenuCategory["iconId"]) || "default",
-      iconTint: String(c.colorToken ?? "from-blue-500 to-indigo-500"),
+      iconTint: tintFromColorToken(
+        typeof c.colorToken === "string" ? c.colorToken : null,
+      ),
+      kitchenStation: normalizeKitchenStationId(c.kitchenStation),
       description: "",
     };
   });
@@ -222,6 +242,7 @@ export function useMenuMutations() {
         name: cat.name,
         iconKey: cat.iconId !== "default" ? cat.iconId : null,
         colorToken: colorTokenFromCategoryTint(cat.iconTint),
+        kitchenStation: kitchenStationToApi(cat.kitchenStation),
       }),
     onSuccess: async () => {
       await invalidateMenu();
@@ -229,8 +250,13 @@ export function useMenuMutations() {
   });
 
   const patchCategory = useMutation({
-    mutationFn: ({ id, body }: { id: string; body: Record<string, unknown> }) =>
-      getAppApi().menu.patchCategory(id, body),
+    mutationFn: ({ id, cat }: { id: string; cat: MenuCategory }) =>
+      getAppApi().menu.patchCategory(id, {
+        name: cat.name,
+        iconKey: cat.iconId !== "default" ? cat.iconId : null,
+        colorToken: colorTokenFromCategoryTint(cat.iconTint),
+        kitchenStation: kitchenStationToApi(cat.kitchenStation),
+      }),
     onSuccess: async () => {
       await invalidateMenu();
     },

@@ -170,11 +170,22 @@ export function createPosApiClient(opts: PosApiClientOptions) {
       listItems: () => request<unknown>("/menu/items"),
       getItem: (itemId: string) => request<unknown>(`/menu/items/${itemId}`),
       getCatalog: () => request<unknown>("/menu/catalog"),
-      createCategory: (body: { name: string; sortOrder?: number; colorToken?: string | null; iconKey?: string | null }) =>
-        request<unknown>("/menu/categories", { method: "POST", body: JSON.stringify(body) }),
+      createCategory: (body: {
+        name: string;
+        sortOrder?: number;
+        colorToken?: string | null;
+        iconKey?: string | null;
+        kitchenStation?: "PIZZA" | "PLATS" | "SNACK" | "CAFETERIA" | "NONE" | null;
+      }) => request<unknown>("/menu/categories", { method: "POST", body: JSON.stringify(body) }),
       patchCategory: (
         categoryId: string,
-        body: { name?: string; sortOrder?: number; colorToken?: string | null; iconKey?: string | null },
+        body: {
+          name?: string;
+          sortOrder?: number;
+          colorToken?: string | null;
+          iconKey?: string | null;
+          kitchenStation?: "PIZZA" | "PLATS" | "SNACK" | "CAFETERIA" | "NONE" | null;
+        },
       ) => request<unknown>(`/menu/categories/${categoryId}`, { method: "PATCH", body: JSON.stringify(body) }),
       deleteCategory: (categoryId: string) => request<unknown>(`/menu/categories/${categoryId}`, { method: "DELETE" }),
       createItem: (body: {

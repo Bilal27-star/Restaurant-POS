@@ -9,7 +9,11 @@ export async function repairKitchenStations(prisma: PrismaClient): Promise<void>
   });
 
   for (const item of items) {
-    const station = resolveKitchenStation(item.category?.name, item.name);
+    const station = resolveKitchenStation(
+      item.category?.name,
+      item.name,
+      item.category?.kitchenStation,
+    );
     if (!station) continue;
 
     await prisma.menuItem.update({

@@ -17,12 +17,21 @@ const modifierBody = z.object({
   extraPrice: optionalPrice,
 });
 
+/** API accepts NONE to clear routing; stored as null in the database. */
+export const kitchenStationInputZ = z.enum(["PIZZA", "PLATS", "SNACK", "CAFETERIA", "NONE"]);
+
+const kitchenStationField = kitchenStationInputZ
+  .nullable()
+  .optional()
+  .transform((v) => (v === undefined ? undefined : v === "NONE" || v === null ? null : v));
+
 export const createCategoryBody = z
   .object({
     name: z.string().min(1).max(120),
     sortOrder: z.number().int().optional(),
     colorToken: z.string().max(64).nullable().optional(),
     iconKey: z.string().max(64).nullable().optional(),
+    kitchenStation: kitchenStationField,
   })
   .strict();
 
@@ -32,6 +41,7 @@ export const patchCategoryBody = z
     sortOrder: z.number().int().optional(),
     colorToken: z.string().max(64).nullable().optional(),
     iconKey: z.string().max(64).nullable().optional(),
+    kitchenStation: kitchenStationField,
   })
   .strict()
   .refine(
@@ -39,7 +49,8 @@ export const patchCategoryBody = z
       o.name !== undefined ||
       o.sortOrder !== undefined ||
       o.colorToken !== undefined ||
-      o.iconKey !== undefined,
+      o.iconKey !== undefined ||
+      o.kitchenStation !== undefined,
     { message: "At least one field required" },
   );
 

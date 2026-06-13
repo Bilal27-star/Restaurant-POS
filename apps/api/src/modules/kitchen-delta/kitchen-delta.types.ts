@@ -86,10 +86,12 @@ export type KitchenDetectLine = {
   kitchenSnapshotHash: string | null;
   modifiers: { modifierId: string | null; label: string }[];
   menuItemKitchenStation: KitchenStation | null;
+  menuCategoryKitchenStation: KitchenStation | null;
   menuCategoryName: string | null;
 };
 
 export type KitchenDetectOrderContext = {
+  restaurantId: string;
   orderId: string;
   orderNumber: string;
   tableNumber: string | null;
@@ -156,6 +158,7 @@ export type KitchenDetectContext =
 export type UnroutedLine = {
   orderItemId: string | null;
   nameSnapshot: string;
+  categoryName: string | null;
 };
 
 export type KitchenRoutingValidationResult =

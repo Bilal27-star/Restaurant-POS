@@ -38,7 +38,6 @@ export function createOrdersRouter(env: Env): Router {
   const requireOrdersUpdate = createRequirePermission(PermissionCodes.ORDERS_UPDATE);
   const requirePayments = createRequirePermission(PermissionCodes.PAYMENTS_PROCESS);
   const requireActiveSession = createRequireActiveSession();
-  const requireSettingsManage = createRequirePermission(PermissionCodes.SETTINGS_MANAGE);
 
   const repository = new OrdersRepository();
   const paymentsRepository = new PaymentsRepository();
@@ -184,7 +183,7 @@ export function createOrdersRouter(env: Env): Router {
   router.post(
     "/:orderId/kitchen/full-reprint",
     requireAuth,
-    requireSettingsManage,
+    requireOrdersUpdate,
     validateRequest("params", orderIdParams),
     validateRequest("body", fullKitchenReprintBody),
     controller.fullKitchenReprint,

@@ -1,4 +1,5 @@
 import type { Prisma } from "@prisma/client";
+import type { KitchenStation } from "@pos/database";
 
 import type { MenuCatalogCategory } from "./menu.repository.js";
 
@@ -9,6 +10,7 @@ export type MenuCategorySummaryDto = {
   sortOrder: number;
   colorToken: string | null;
   iconKey: string | null;
+  kitchenStation: KitchenStation | null;
   itemCount: number;
 };
 
@@ -18,6 +20,7 @@ export type MenuCategoryRefDto = {
   slug: string;
   sortOrder: number;
   colorToken: string | null;
+  kitchenStation: KitchenStation | null;
 };
 
 export type MenuIngredientDto = {
@@ -58,6 +61,7 @@ function serializeCategoryRef(cat: {
   slug: string;
   sortOrder: number;
   colorToken: string | null;
+  kitchenStation: KitchenStation | null;
 }): MenuCategoryRefDto {
   return {
     id: cat.id,
@@ -65,6 +69,7 @@ function serializeCategoryRef(cat: {
     slug: cat.slug,
     sortOrder: cat.sortOrder,
     colorToken: cat.colorToken,
+    kitchenStation: cat.kitchenStation,
   };
 }
 

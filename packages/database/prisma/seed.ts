@@ -172,6 +172,44 @@ function resolveKitchenStation(categoryName: string | null | undefined, itemName
   return resolveKitchenStationFromCategoryName(categoryName ?? "") ?? resolveKitchenStationFromItemName(itemName);
 }
 
+const CATEGORY_KITCHEN_STATION_BY_NAME: Record<string, KitchenStation> = {
+  pizza: KitchenStation.PIZZA,
+  snacks: KitchenStation.SNACK,
+  snack: KitchenStation.SNACK,
+  plats: KitchenStation.PLATS,
+  entrées: KitchenStation.PLATS,
+  entrees: KitchenStation.PLATS,
+  entrée: KitchenStation.PLATS,
+  entree: KitchenStation.PLATS,
+  poissons: KitchenStation.PLATS,
+  poisson: KitchenStation.PLATS,
+  cafeteria: KitchenStation.CAFETERIA,
+  cafétéria: KitchenStation.CAFETERIA,
+};
+
+async function repairExistingMenuCategoryKitchenStations(): Promise<void> {
+  const categories = await prisma.menuCategory.findMany({
+    where: { kitchenStation: null, deletedAt: null },
+  });
+
+  for (const category of categories) {
+    const resolvedStation = CATEGORY_KITCHEN_STATION_BY_NAME[category.name.trim().toLowerCase()];
+    if (!resolvedStation) continue;
+
+    await prisma.menuCategory.update({
+      where: { id: category.id },
+      data: { kitchenStation: resolvedStation },
+    });
+
+    console.warn("[CATEGORY STATION RESOLVED]", {
+      menuCategoryId: category.id,
+      name: category.name,
+      station: resolvedStation,
+      source: "seed",
+    });
+  }
+}
+
 async function repairExistingMenuItemKitchenStations(): Promise<void> {
   const items = await prisma.menuItem.findMany({
     where: { kitchenStation: null, deletedAt: null },
@@ -312,6 +350,7 @@ async function main() {
 
   await seedExpenseCategories(restaurant.id);
   await seedDefaultFloorsAndTables(restaurant.id);
+  await repairExistingMenuCategoryKitchenStations();
   await repairExistingMenuItemKitchenStations();
 
   const printers = [

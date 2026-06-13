@@ -10,6 +10,10 @@ import {
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { fr } from "@/lib/locale/fr";
+import {
+  KITCHEN_STATION_OPTIONS,
+  type CategoryKitchenStationId,
+} from "./kitchen-station-options";
 import type { CategoryIconId, MenuCategory } from "./menu-types";
 
 const overlayClass = cn(
@@ -57,31 +61,54 @@ const COLOR_PRESETS: { id: string; label: string; tint: string }[] = [
   { id: "amber", label: fr.menuCategoryModal.colors.amber, tint: "bg-amber-500/25 text-amber-200" },
 ];
 
+function colorIdFromTint(tint: string): string {
+  const match = COLOR_PRESETS.find((c) => c.tint === tint);
+  return match?.id ?? COLOR_PRESETS[0]!.id;
+}
+
 export interface AddCategoryModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  mode?: "add" | "edit";
+  category?: MenuCategory | null;
   onSave: (category: MenuCategory) => void | Promise<void>;
 }
 
-export function AddCategoryModal({ open, onOpenChange, onSave }: AddCategoryModalProps) {
+export function AddCategoryModal({
+  open,
+  onOpenChange,
+  mode = "add",
+  category = null,
+  onSave,
+}: AddCategoryModalProps) {
+  const isEdit = mode === "edit";
   const formId = useId();
   const [name, setName] = useState("");
   const [iconId, setIconId] = useState<CategoryIconId>("pizza");
   const [colorId, setColorId] = useState(COLOR_PRESETS[0]!.id);
+  const [kitchenStation, setKitchenStation] = useState<CategoryKitchenStationId>("NONE");
   const [description, setDescription] = useState("");
   const [saving, setSaving] = useState(false);
   const [nameError, setNameError] = useState(false);
 
   useEffect(() => {
-    if (open) {
+    if (!open) return;
+    if (isEdit && category) {
+      setName(category.name);
+      setIconId(category.iconId);
+      setColorId(colorIdFromTint(category.iconTint));
+      setKitchenStation(category.kitchenStation);
+      setDescription(category.description ?? "");
+    } else {
       setName("");
       setIconId("pizza");
       setColorId(COLOR_PRESETS[0]!.id);
+      setKitchenStation("NONE");
       setDescription("");
-      setNameError(false);
-      setSaving(false);
     }
-  }, [open]);
+    setNameError(false);
+    setSaving(false);
+  }, [open, isEdit, category]);
 
   const tint = COLOR_PRESETS.find((c) => c.id === colorId)?.tint ?? COLOR_PRESETS[0]!.tint;
 
@@ -93,10 +120,11 @@ export function AddCategoryModal({ open, onOpenChange, onSave }: AddCategoryModa
     }
     setSaving(true);
     const cat: MenuCategory = {
-      id: "",
+      id: isEdit && category ? category.id : "",
       name: name.trim(),
       iconId,
       iconTint: tint,
+      kitchenStation,
       description: description.trim() || undefined,
     };
     try {
@@ -110,12 +138,18 @@ export function AddCategoryModal({ open, onOpenChange, onSave }: AddCategoryModa
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent hideClose overlayClassName={overlayClass} className={panelClass}>
-        <DialogTitle className="sr-only">{fr.menuCategoryModal.srAdd}</DialogTitle>
+        <DialogTitle className="sr-only">
+          {isEdit ? fr.menuCategoryModal.srEdit : fr.menuCategoryModal.srAdd}
+        </DialogTitle>
         <DialogDescription className="sr-only">{fr.menuCategoryModal.srDesc}</DialogDescription>
         <header className="flex items-start justify-between border-b border-pos-border-subtle px-5 py-4">
           <div className="pr-10">
-            <h2 className="text-lg font-semibold text-foreground">{fr.menuCategoryModal.title}</h2>
-            <p className="mt-1 text-sm font-medium text-muted-foreground">{fr.menuCategoryModal.subtitle}</p>
+            <h2 className="text-lg font-semibold text-foreground">
+              {isEdit ? fr.menuCategoryModal.titleEdit : fr.menuCategoryModal.title}
+            </h2>
+            <p className="mt-1 text-sm font-medium text-muted-foreground">
+              {isEdit ? fr.menuCategoryModal.subtitleEdit : fr.menuCategoryModal.subtitle}
+            </p>
           </div>
           <button
             type="button"
@@ -142,6 +176,24 @@ export function AddCategoryModal({ open, onOpenChange, onSave }: AddCategoryModa
               className={cn(field, nameError && "border-rose-500/50 ring-1 ring-rose-500/25")}
               placeholder={fr.menuCategoryModal.placeholderName}
             />
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-xs font-semibold text-foreground" htmlFor={`${formId}-kitchen`}>
+              {fr.menuCategoryModal.kitchenStation}
+            </label>
+            <select
+              id={`${formId}-kitchen`}
+              value={kitchenStation}
+              onChange={(e) => setKitchenStation(e.target.value as CategoryKitchenStationId)}
+              className={cn(field, "cursor-pointer")}
+            >
+              {KITCHEN_STATION_OPTIONS.map((o) => (
+                <option key={o.id} value={o.id} className="bg-pos-depth">
+                  {o.label}
+                </option>
+              ))}
+            </select>
+            <p className="text-xs font-medium text-muted-foreground">{fr.menuCategoryModal.kitchenStationHint}</p>
           </div>
           <div className="space-y-1.5">
             <label className="text-xs font-semibold text-foreground" htmlFor={`${formId}-icon`}>

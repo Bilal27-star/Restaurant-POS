@@ -14,12 +14,13 @@ export async function orderHasKitchenRoutableLines(
 }
 
 /**
- * When kitchen delta printing is on and the mutation should print, require a successful enqueue.
+ * When kitchen delta printing is on and this mutation created a kitchen intent,
+ * require a successful enqueue. Unrouted-only mutations produce no intent and must not fail.
  */
 export async function kitchenDispatchRequiredButMissing(
-  kitchenRepo: KitchenDeltaRepository,
-  restaurantId: string,
-  orderId: string,
+  _kitchenRepo: KitchenDeltaRepository,
+  _restaurantId: string,
+  _orderId: string,
   mutationApplied: boolean,
   mutationKey: string | null | undefined,
   result: KitchenDispatchResult | null,
@@ -30,5 +31,5 @@ export async function kitchenDispatchRequiredButMissing(
   if (result?.kitchenDispatched) {
     return false;
   }
-  return orderHasKitchenRoutableLines(kitchenRepo, restaurantId, orderId);
+  return Boolean(result?.intentId);
 }

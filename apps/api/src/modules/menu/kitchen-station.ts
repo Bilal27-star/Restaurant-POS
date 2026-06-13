@@ -50,7 +50,11 @@ export function resolveKitchenStationFromItemName(name: string): KitchenStation 
 export function resolveKitchenStation(
   categoryName: string | null | undefined,
   itemName: string,
+  categoryKitchenStation?: KitchenStation | null,
 ): KitchenStation | null {
+  if (categoryKitchenStation) {
+    return categoryKitchenStation;
+  }
   return (
     resolveKitchenStationFromCategoryName(categoryName ?? "") ??
     resolveKitchenStationFromItemName(itemName)

@@ -61,8 +61,9 @@ export type KitchenShadowPipelineInput =
       removedLines: KitchenDetectLine[];
     };
 
-function baseOrderContext(order: OrderWithRelations) {
+function baseOrderContext(restaurantId: string, order: OrderWithRelations) {
   return {
+    restaurantId,
     orderId: order.id,
     orderNumber: order.orderNumber,
     tableNumber: order.table?.number ?? null,
@@ -76,7 +77,7 @@ export function buildKitchenDetectContext(
   input: KitchenShadowPipelineInput,
   lines: KitchenDetectLine[],
 ): KitchenDetectContext {
-  const base = baseOrderContext(input.order);
+  const base = baseOrderContext(input.restaurantId, input.order);
   switch (input.kind) {
     case "CREATE":
       return {

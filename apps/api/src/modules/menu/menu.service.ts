@@ -1,4 +1,5 @@
 import { Prisma } from "@prisma/client";
+import type { KitchenStation } from "@pos/database";
 
 import { prisma } from "@pos/database";
 
@@ -40,6 +41,7 @@ export class MenuService {
       sortOrder: c.sortOrder,
       colorToken: c.colorToken,
       iconKey: c.iconKey,
+      kitchenStation: c.kitchenStation,
       itemCount: c._count.items,
     }));
   }
@@ -63,7 +65,16 @@ export class MenuService {
     return serializeMenuItemStandalone(row);
   }
 
-  async createCategory(restaurantId: string, input: { name: string; sortOrder?: number; colorToken?: string | null; iconKey?: string | null }) {
+  async createCategory(
+    restaurantId: string,
+    input: {
+      name: string;
+      sortOrder?: number;
+      colorToken?: string | null;
+      iconKey?: string | null;
+      kitchenStation?: KitchenStation | null;
+    },
+  ) {
     const base = slugify(input.name);
     let slug = base || "category";
     for (let i = 0; i < 20; i++) {
@@ -80,6 +91,7 @@ export class MenuService {
       sortOrder: input.sortOrder ?? 0,
       colorToken: input.colorToken,
       iconKey: input.iconKey,
+      kitchenStation: input.kitchenStation ?? null,
     });
     console.info("[CATEGORY CREATED]", {
       restaurantId,
@@ -94,7 +106,13 @@ export class MenuService {
   async patchCategory(
     restaurantId: string,
     categoryId: string,
-    patch: { name?: string; sortOrder?: number; colorToken?: string | null; iconKey?: string | null },
+    patch: {
+      name?: string;
+      sortOrder?: number;
+      colorToken?: string | null;
+      iconKey?: string | null;
+      kitchenStation?: KitchenStation | null;
+    },
   ) {
     const c = await this.repo.findCategory(restaurantId, categoryId);
     if (!c) {
@@ -112,6 +130,9 @@ export class MenuService {
     }
     if (patch.iconKey !== undefined) {
       data.iconKey = patch.iconKey;
+    }
+    if (patch.kitchenStation !== undefined) {
+      data.kitchenStation = patch.kitchenStation;
     }
     const n = await this.repo.updateCategory(restaurantId, categoryId, data);
     if (n.count === 0) {

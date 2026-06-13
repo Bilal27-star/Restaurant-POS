@@ -19,7 +19,11 @@ export function resolveLineKitchenStation(line: KitchenDetectLine): KitchenStati
   if (line.menuItemKitchenStation) {
     return line.menuItemKitchenStation;
   }
-  return resolveKitchenStation(line.menuCategoryName, line.nameSnapshot);
+  return resolveKitchenStation(
+    line.menuCategoryName,
+    line.nameSnapshot,
+    line.menuCategoryKitchenStation,
+  );
 }
 
 function bundleHasSections(bundle: KitchenStationBundle): boolean {
@@ -55,7 +59,11 @@ export function buildStationBundles(
   for (const { line, section } of lineSections) {
     const station = resolveLineKitchenStation(line);
     if (!station) {
-      unrouted.push({ orderItemId: line.id, nameSnapshot: line.nameSnapshot });
+      unrouted.push({
+        orderItemId: line.id,
+        nameSnapshot: line.nameSnapshot,
+        categoryName: line.menuCategoryName,
+      });
       continue;
     }
     grouped.push({
@@ -79,7 +87,7 @@ export function buildStationBundles(
   return { bundles, unrouted };
 }
 
-/** Spec §11 — fail loud if any delta line is unrouted. */
+/** Validate assembled intent bundles (routed lines only). */
 export function validateKitchenDispatchRouting(intent: KitchenDispatchIntent): KitchenRoutingValidationResult {
   const unroutedLines: UnroutedLine[] = [];
 
@@ -88,7 +96,11 @@ export function validateKitchenDispatchRouting(intent: KitchenDispatchIntent): K
       if (section.kind === "INFO") continue;
       for (const line of section.lines) {
         if (!line.kitchenStation && !bundle.station) {
-          unroutedLines.push({ orderItemId: line.orderItemId, nameSnapshot: line.nameSnapshot });
+          unroutedLines.push({
+            orderItemId: line.orderItemId,
+            nameSnapshot: line.nameSnapshot,
+            categoryName: null,
+          });
         }
       }
     }
@@ -100,7 +112,7 @@ export function validateKitchenDispatchRouting(intent: KitchenDispatchIntent): K
   return { ok: true };
 }
 
-/** Re-validate after bundle assembly. */
+/** Re-validate routed bundles after assembly. Pass `unrouted: []` when unrouted lines were already skipped. */
 export function validateBundlesAtPreflight(
   bundles: KitchenStationBundle[],
   unrouted: UnroutedLine[],
@@ -117,7 +129,11 @@ export function validateBundlesAtPreflight(
       if (section.kind === "INFO") continue;
       for (const line of section.lines) {
         if (!line.kitchenStation) {
-          extra.push({ orderItemId: line.orderItemId, nameSnapshot: line.nameSnapshot });
+          extra.push({
+            orderItemId: line.orderItemId,
+            nameSnapshot: line.nameSnapshot,
+            categoryName: null,
+          });
         }
       }
     }

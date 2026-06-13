@@ -28,7 +28,17 @@ export class MenuRepository {
     });
   }
 
-  createCategory(restaurantId: string, input: { name: string; slug: string; sortOrder: number; colorToken?: string | null; iconKey?: string | null }) {
+  createCategory(
+    restaurantId: string,
+    input: {
+      name: string;
+      slug: string;
+      sortOrder: number;
+      colorToken?: string | null;
+      iconKey?: string | null;
+      kitchenStation?: Prisma.MenuCategoryCreateInput["kitchenStation"];
+    },
+  ) {
     return prisma.menuCategory.create({
       data: {
         restaurantId,
@@ -37,6 +47,7 @@ export class MenuRepository {
         sortOrder: input.sortOrder,
         colorToken: input.colorToken ?? null,
         iconKey: input.iconKey ?? null,
+        kitchenStation: input.kitchenStation ?? null,
       },
     });
   }

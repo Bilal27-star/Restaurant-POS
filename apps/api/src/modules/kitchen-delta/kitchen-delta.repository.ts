@@ -2,7 +2,6 @@ import type { KitchenStation, OrderItemKitchenStatus, Prisma } from "@pos/databa
 import { Prisma as PrismaNamespace } from "@pos/database";
 
 import { prisma } from "../../prisma/index.js";
-import type { OrderWithRelations } from "../orders/orders.repository.js";
 import type {
   KitchenDetectLine,
   KitchenItemKitchenState,
@@ -30,7 +29,7 @@ export const kitchenLineSelect = {
   menuItem: {
     select: {
       kitchenStation: true,
-      category: { select: { name: true } },
+      category: { select: { name: true, kitchenStation: true } },
     },
   },
 } satisfies Prisma.OrderItemSelect;
@@ -51,26 +50,9 @@ export function mapOrderItemToKitchenDetectLine(row: KitchenOrderItemRow): Kitch
     kitchenSnapshotHash: row.kitchenSnapshotHash,
     modifiers: row.modifiers.map((m) => ({ modifierId: m.modifierId, label: m.label })),
     menuItemKitchenStation: row.menuItem?.kitchenStation ?? null,
+    menuCategoryKitchenStation: row.menuItem?.category?.kitchenStation ?? null,
     menuCategoryName: row.menuItem?.category?.name ?? null,
   };
-}
-
-export function mapOrderLinesToKitchenDetectLines(order: OrderWithRelations): KitchenDetectLine[] {
-  return order.items.map((item) => ({
-    id: item.id,
-    menuItemId: item.menuItemId,
-    nameSnapshot: item.nameSnapshot,
-    quantity: item.quantity,
-    kitchenNotes: item.kitchenNotes,
-    removedIngredients: item.removedIngredients,
-    kitchenStatus: (item as { kitchenStatus?: OrderItemKitchenStatus }).kitchenStatus ?? "PENDING",
-    kitchenStation: (item as { kitchenStation?: KitchenStation | null }).kitchenStation ?? null,
-    kitchenLastSentSnapshot: (item as { kitchenLastSentSnapshot?: unknown }).kitchenLastSentSnapshot ?? null,
-    kitchenSnapshotHash: (item as { kitchenSnapshotHash?: string | null }).kitchenSnapshotHash ?? null,
-    modifiers: item.modifiers.map((m) => ({ modifierId: m.modifierId, label: m.label })),
-    menuItemKitchenStation: null,
-    menuCategoryName: null,
-  }));
 }
 
 export function mapKitchenOrderItemRowToState(row: KitchenOrderItemRow): KitchenItemKitchenState {

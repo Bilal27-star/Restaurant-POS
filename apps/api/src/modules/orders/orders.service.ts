@@ -225,7 +225,11 @@ export class OrdersService {
 
           let station = menuItem.kitchenStation;
           if (!station) {
-            station = resolveKitchenStation(menuItem.category?.name, menuItem.name);
+            station = resolveKitchenStation(
+              menuItem.category?.name,
+              menuItem.name,
+              menuItem.category?.kitchenStation,
+            );
             if (station) {
               console.warn("[STATION RESOLVED]", {
                 orderId,

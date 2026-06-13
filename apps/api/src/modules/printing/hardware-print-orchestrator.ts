@@ -226,14 +226,18 @@ export class HardwarePrintOrchestrator {
         select: {
           kitchenStation: true,
           name: true,
-          category: { select: { name: true } },
+          category: { select: { name: true, kitchenStation: true } },
         },
       });
       if (!menuItem) continue;
 
       let station = menuItem.kitchenStation;
       if (!station) {
-        station = resolveKitchenStation(menuItem.category?.name, menuItem.name);
+        station = resolveKitchenStation(
+          menuItem.category?.name,
+          menuItem.name,
+          menuItem.category?.kitchenStation,
+        );
         if (station) {
           console.warn("[STATION RESOLVED]", {
             menuItemId: it.menuItemId,

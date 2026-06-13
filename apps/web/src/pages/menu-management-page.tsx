@@ -1,7 +1,8 @@
-import { FolderPlus, LayoutGrid, Plus, Trash2 } from "lucide-react";
+import { FolderPlus, LayoutGrid, Pencil, Plus, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { AddCategoryModal } from "@/components/menu/add-category-modal";
+import { KITCHEN_STATION_OPTIONS } from "@/components/menu/kitchen-station-options";
 import { ConfirmDialog } from "@/components/menu/confirm-dialog";
 import { ItemFormModal } from "@/components/menu/item-form-modal";
 import { getMenuCategoryLucideIcon } from "@/components/menu/menu-category-icons";
@@ -30,7 +31,8 @@ export function MenuManagementPage() {
   const itemsQuery = useMenuItemsQuery();
   const { data: rawCategories, isLoading: isLoadingCategories, isError: categoriesError, error: categoriesErr } = categoriesQuery;
   const { data: rawItems, isLoading: isLoadingItems, isError: itemsError, error: itemsErr } = itemsQuery;
-  const { createCategory, deleteCategory, reorderCategories, createItem, patchItem, deleteItem } = useMenuMutations();
+  const { createCategory, patchCategory, deleteCategory, reorderCategories, createItem, patchItem, deleteItem } =
+    useMenuMutations();
 
   const categories = rawCategories ?? [];
   const items = rawItems ?? [];
@@ -43,6 +45,7 @@ export function MenuManagementPage() {
   const [selectedCategoryId, setSelectedCategoryId] = useState("");
 
   const [addCategoryOpen, setAddCategoryOpen] = useState(false);
+  const [editCategory, setEditCategory] = useState<MenuCategory | null>(null);
   const [addItemOpen, setAddItemOpen] = useState(false);
   const [editItem, setEditItem] = useState<MenuItem | null>(null);
   const [deleteItemId, setDeleteItemId] = useState<string | null>(null);
@@ -127,6 +130,17 @@ export function MenuManagementPage() {
     }
   };
 
+  const handleEditCategory = async (cat: MenuCategory) => {
+    try {
+      await patchCategory.mutateAsync({ id: cat.id, cat });
+      await Promise.all([categoriesQuery.refetch(), itemsQuery.refetch()]);
+      showToast(fr.menuManagement.toastCategoryUpdated);
+    } catch (err) {
+      showToast(menuMutationErrorMessage(err));
+      throw err;
+    }
+  };
+
   const handleDeleteCategoryConfirm = async () => {
     if (!deleteCategoryId) return;
     try {
@@ -168,6 +182,9 @@ export function MenuManagementPage() {
 
   const selectedCategory = categories.find((c) => c.id === selectedCategoryId);
   const selectedCategoryName = selectedCategory?.name ?? fr.menuManagement.categoryFallback;
+  const selectedKitchenStationLabel =
+    KITCHEN_STATION_OPTIONS.find((o) => o.id === selectedCategory?.kitchenStation)?.label ??
+    fr.menuManagement.kitchenStationLabel;
   const SelectedCategoryIcon = selectedCategory
     ? getMenuCategoryLucideIcon(selectedCategory.iconId)
     : LayoutGrid;
@@ -268,18 +285,35 @@ export function MenuManagementPage() {
                     <h2 className="text-xl font-bold tracking-tight text-pos-neon-magenta md:text-2xl">{selectedCategoryName}</h2>
                   </div>
                   <span className="text-base font-medium text-muted-foreground">({visibleItems.length})</span>
+                  {selectedCategory ? (
+                    <span className="rounded-lg border border-pos-border-subtle bg-pos-glass px-2.5 py-1 text-xs font-semibold text-muted-foreground">
+                      {fr.menuManagement.kitchenStationLabel}: {selectedKitchenStationLabel}
+                    </span>
+                  ) : null}
                 </div>
-                {selectedCategoryId ? (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    className="h-9 gap-1.5 rounded-lg border-rose-500/30 text-rose-300 hover:bg-rose-950/40"
-                    onClick={() => setDeleteCategoryId(selectedCategoryId)}
-                  >
-                    <Trash2 className="size-3.5" aria-hidden />
-                    {fr.menuManagement.deleteConfirm}
-                  </Button>
+                {selectedCategoryId && selectedCategory ? (
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-9 gap-1.5 rounded-lg border-pos-border-subtle"
+                      onClick={() => setEditCategory(selectedCategory)}
+                    >
+                      <Pencil className="size-3.5" aria-hidden />
+                      {fr.menuManagement.editCategory}
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-9 gap-1.5 rounded-lg border-rose-500/30 text-rose-300 hover:bg-rose-950/40"
+                      onClick={() => setDeleteCategoryId(selectedCategoryId)}
+                    >
+                      <Trash2 className="size-3.5" aria-hidden />
+                      {fr.menuManagement.deleteConfirm}
+                    </Button>
+                  </div>
                 ) : null}
               </div>
 
@@ -316,6 +350,19 @@ export function MenuManagementPage() {
       </div>
 
       <AddCategoryModal open={addCategoryOpen} onOpenChange={setAddCategoryOpen} onSave={handleAddCategory} />
+
+      <AddCategoryModal
+        open={editCategory != null}
+        onOpenChange={(o) => {
+          if (!o) setEditCategory(null);
+        }}
+        mode="edit"
+        category={editCategory}
+        onSave={async (cat) => {
+          await handleEditCategory(cat);
+          setEditCategory(null);
+        }}
+      />
 
       <ItemFormModal
         open={addItemOpen}

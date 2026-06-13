@@ -35,7 +35,13 @@ export class MenuController {
 
   createCategory = asyncHandler(async (req: Request, res: Response) => {
     const rid = req.auth!.restaurantId;
-    const body = req.body as { name: string; sortOrder?: number; colorToken?: string | null; iconKey?: string | null };
+    const body = req.body as {
+      name: string;
+      sortOrder?: number;
+      colorToken?: string | null;
+      iconKey?: string | null;
+      kitchenStation?: import("@pos/database").KitchenStation | null;
+    };
     const data = await this.service.createCategory(rid, body);
     auditFromRequest(req, {
       action: "menu.category.create",
@@ -53,6 +59,7 @@ export class MenuController {
       sortOrder?: number;
       colorToken?: string | null;
       iconKey?: string | null;
+      kitchenStation?: import("@pos/database").KitchenStation | null;
     };
     const data = await this.service.patchCategory(rid, categoryId, body);
     auditFromRequest(req, {
