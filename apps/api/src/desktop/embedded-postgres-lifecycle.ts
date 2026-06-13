@@ -157,6 +157,7 @@ export async function bootEmbeddedPostgres(
       password,
       port,
       persistent: true,
+      initdbFlags: ["--encoding=UTF8"],
       onLog: (msg) => log(`[embedded-pg] ${String(msg).trimEnd()}`),
       onError: (msg) => log(`[embedded-pg][err] ${String(msg).trimEnd()}`),
     });
