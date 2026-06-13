@@ -7,7 +7,6 @@ import { getAppApi } from "@/lib/app-api";
 import { queryKeys } from "@/lib/query-keys";
 import type { SerializedTakeawayOrder } from "@/types/serialized-order";
 import type { TakeawayStatusFilter } from "./takeaway-order-types";
-import { takeawayFilterMatches } from "./takeaway-order-types";
 
 function startOfLocalDayMs(ts: number) {
   const d = new Date(ts);
@@ -61,9 +60,22 @@ export function useTakeawayOrders(nowMs: number) {
     void qc.invalidateQueries({ queryKey: queryKeys.navigation.counts() });
   };
 
+  const patchOrderInBoardCache = (orderId: string, patch: Partial<SerializedTakeawayOrder>) => {
+    qc.setQueryData<SerializedTakeawayOrder[]>(queryKeys.orders.takeawayBoard(), (prev) =>
+      prev?.map((o) => (o.id === orderId ? { ...o, ...patch } : o)) ?? prev,
+    );
+  };
+
   const startPreparing = async (id: string) => {
     try {
-      await getAppApi().orders.patch(id, buildOrderPatchBody({ status: "PREPARING" }));
+      const updated = (await getAppApi().orders.patch(
+        id,
+        buildOrderPatchBody({ status: "PREPARING" }),
+      )) as SerializedTakeawayOrder;
+      patchOrderInBoardCache(id, {
+        status: "PREPARING",
+        ...(typeof updated.version === "number" ? { version: updated.version } : {}),
+      });
       refreshTakeawayQueries();
     } catch (err) {
       console.error("takeaway startPreparing failed", err);
@@ -72,7 +84,14 @@ export function useTakeawayOrders(nowMs: number) {
   };
   const markReady = async (id: string) => {
     try {
-      await getAppApi().orders.patch(id, buildOrderPatchBody({ status: "READY" }));
+      const updated = (await getAppApi().orders.patch(
+        id,
+        buildOrderPatchBody({ status: "READY" }),
+      )) as SerializedTakeawayOrder;
+      patchOrderInBoardCache(id, {
+        status: "READY",
+        ...(typeof updated.version === "number" ? { version: updated.version } : {}),
+      });
       refreshTakeawayQueries();
     } catch (err) {
       console.error("takeaway markReady failed", err);
@@ -94,11 +113,11 @@ export function useTakeawayOrders(nowMs: number) {
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<TakeawayStatusFilter>("all");
 
-  const visibleOrders = useMemo(() => {
+  /** Kanban columns: search only — status chips do not filter workflow cards. */
+  const boardOrders = useMemo(() => {
     const q = query.trim().toLowerCase();
     return orders.filter((o) => {
       if (o.status === "CANCELLED") return false;
-      if (!takeawayFilterMatches(statusFilter, o.status)) return false;
       if (!q) return true;
       const blob = [
         String(o.orderNumber || ""),
@@ -114,31 +133,31 @@ export function useTakeawayOrders(nowMs: number) {
         .toLowerCase();
       return blob.includes(q);
     });
-  }, [orders, query, statusFilter]);
+  }, [orders, query]);
 
   const dayStart = useMemo(() => startOfLocalDayMs(nowMs), [nowMs]);
 
   const columnNew = useMemo(
-    () => visibleOrders.filter((o) => o.status === "PENDING").sort((a, b) => openedAtMs(a) - openedAtMs(b)),
-    [visibleOrders],
+    () => boardOrders.filter((o) => o.status === "PENDING").sort((a, b) => openedAtMs(a) - openedAtMs(b)),
+    [boardOrders],
   );
   const columnPreparing = useMemo(
-    () => visibleOrders.filter((o) => o.status === "PREPARING").sort((a, b) => openedAtMs(a) - openedAtMs(b)),
-    [visibleOrders],
+    () => boardOrders.filter((o) => o.status === "PREPARING").sort((a, b) => openedAtMs(a) - openedAtMs(b)),
+    [boardOrders],
   );
   const columnReady = useMemo(
-    () => visibleOrders.filter((o) => o.status === "READY").sort((a, b) => openedAtMs(a) - openedAtMs(b)),
-    [visibleOrders],
+    () => boardOrders.filter((o) => o.status === "READY").sort((a, b) => openedAtMs(a) - openedAtMs(b)),
+    [boardOrders],
   );
   const columnDelivered = useMemo(
     () =>
-      visibleOrders
+      boardOrders
         .filter((o) => {
           if (o.status !== "COMPLETED") return false;
           return closedAtMs(o) >= dayStart;
         })
         .sort((a, b) => closedAtMs(b) - closedAtMs(a)),
-    [visibleOrders, dayStart],
+    [boardOrders, dayStart],
   );
 
   const kpis = useMemo(() => {

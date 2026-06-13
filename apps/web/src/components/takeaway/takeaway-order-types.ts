@@ -19,6 +19,7 @@ const FILTER_TO_STATUS: Record<Exclude<TakeawayStatusFilter, "all">, TakeawayOrd
   delivered: "COMPLETED",
 };
 
+/** Optional browse chip → status label (not applied to kanban column assignment). */
 export function takeawayFilterMatches(filter: TakeawayStatusFilter, status: TakeawayOrderStatusApi): boolean {
   if (filter === "all") return true;
   return FILTER_TO_STATUS[filter] === status;
